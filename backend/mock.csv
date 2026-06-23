@@ -1,0 +1,6 @@
+cat_col,date_col,dup_1,dup_2,high_null
+Mumbai,01/01/2025,1,1,
+mumbai,2025-01-01,2,2,
+MUMBAI,Jan-01-2025,3,3,
+Delhi,2025-01-02,4,4,
+delhi,12/12/2025,5,5,Valid
