@@ -8,6 +8,9 @@ import {
 } from 'recharts';
 import { Activity, LayoutGrid, Info, Zap, Search, Filter } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -39,7 +42,7 @@ export default function VisualizationPage() {
 
   useEffect(() => {
     if (sessionId) {
-      axios.get(`http://localhost:8000/api/visualizations/${sessionId}`)
+      axios.get(`${API_URL}/api/visualizations/${sessionId}`)
         .then(res => {
           setCharts(res.data.visualizations || []);
           setLoading(false);

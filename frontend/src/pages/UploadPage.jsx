@@ -4,6 +4,9 @@ import { UploadCloud, File, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 export default function UploadPage() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -22,7 +25,7 @@ export default function UploadPage() {
     formData.append('file', file);
     
     try {
-      const res = await axios.post('http://localhost:8000/api/upload', formData);
+      const res = await axios.post(`${API_URL}/api/upload`, formData);
       saveSession(res.data.session_id);
       setOverview(res.data.overview);
       navigate('/dashboard');

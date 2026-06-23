@@ -4,6 +4,9 @@ import { useAppContext } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
 import { Send, Bot, User } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 export default function ChatPage() {
   const { sessionId } = useAppContext();
   const [messages, setMessages] = useState([{ role: 'bot', text: 'Hello! I am your AI Data Analyst. Ask me anything about your dataset.' }]);
@@ -27,7 +30,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const res = await axios.post(`http://localhost:8000/api/chat/${sessionId}`, { message: userMsg });
+      const res = await axios.post(`${API_URL}/api/chat/${sessionId}`, { message: userMsg });
       setMessages(prev => [...prev, { role: 'bot', text: res.data.response }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'bot', text: 'Sorry, I encountered an error. Is GEMINI_API_KEY configured?' }]);

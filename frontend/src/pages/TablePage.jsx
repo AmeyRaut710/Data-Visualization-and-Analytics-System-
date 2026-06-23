@@ -4,6 +4,9 @@ import { useAppContext } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, LayoutGrid, Database, DatabaseBackup, AlertTriangle } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 export default function TablePage() {
   const { sessionId } = useAppContext();
   const [data, setData] = useState([]);
@@ -35,7 +38,7 @@ export default function TablePage() {
   const fetchData = async () => {
     try {
       // limit=0 asks the backend to return ALL rows
-      const res = await axios.get(`http://localhost:8000/api/table/${sessionId}`, {
+      const res = await axios.get(`${API_URL}/api/table/${sessionId}`, {
         params: { dataset, page: 1, limit: 0, search, sort_col: sortCol, sort_order: sortOrder }
       });
       setColumns(res.data.columns);

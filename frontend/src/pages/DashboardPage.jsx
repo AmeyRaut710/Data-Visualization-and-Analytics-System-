@@ -5,6 +5,9 @@ import { Navigate } from 'react-router-dom';
 import { Database, Hash, Columns, FileText, AlertTriangle, CheckCircle, ShieldAlert, Sparkles, Copy, DownloadCloud, Activity, Bot, Search, LayoutGrid, CheckCircle2, AlertOctagon } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 export default function DashboardPage() {
   const { sessionId, overview } = useAppContext();
   const [quality, setQuality] = useState(null);
@@ -32,7 +35,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (sessionId) {
-      axios.get(`http://localhost:8000/api/quality/${sessionId}`)
+      axios.get(`${API_URL}/api/quality/${sessionId}`)
         .then(res => {
           setQuality(res.data);
           setLoading(false);

@@ -4,6 +4,9 @@ import { useAppContext } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
 import { Lightbulb } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 export default function InsightPage() {
   const { sessionId } = useAppContext();
   const [insights, setInsights] = useState([]);
@@ -11,7 +14,7 @@ export default function InsightPage() {
 
   useEffect(() => {
     if (sessionId) {
-      axios.get(`http://localhost:8000/api/insights/${sessionId}`)
+      axios.get(`${API_URL}/api/insights/${sessionId}`)
         .then(res => {
           setInsights(res.data.insights || []);
           setLoading(false);

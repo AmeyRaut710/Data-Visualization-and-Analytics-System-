@@ -3,19 +3,22 @@ import { Settings, DownloadCloud, Trash2, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 export default function SettingsPage() {
   const { sessionId, clearSession } = useAppContext();
   const navigate = useNavigate();
 
   const handleExport = (type) => {
     if (!sessionId) return;
-    window.open(`http://localhost:8000/api/export/${sessionId}/${type}`, '_blank');
+    window.open(`${API_URL}/api/export/${sessionId}/${type}`, '_blank');
   };
 
   const handleClear = async () => {
     if (sessionId) {
       try {
-        await axios.delete(`http://localhost:8000/api/session/${sessionId}`);
+        await axios.delete(`${API_URL}/api/session/${sessionId}`);
       } catch (err) {
         console.error(err);
       }

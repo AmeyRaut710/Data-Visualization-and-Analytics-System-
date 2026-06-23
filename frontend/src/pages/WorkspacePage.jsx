@@ -4,6 +4,9 @@ import { useAppContext } from '../context/AppContext';
 import { Navigate } from 'react-router-dom';
 import { ArrowLeft, Search, Filter, Download, Save, RefreshCw, X, Check, Eye, Trash2, BrainCircuit, ArrowUpDown, ArrowUp, ArrowDown, Eraser, AlertTriangle, Undo2, History, Loader2 } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
+
+
 export default function WorkspacePage() {
   const { sessionId } = useAppContext();
   const [data, setData] = useState([]);
@@ -57,7 +60,7 @@ export default function WorkspacePage() {
     try {
       if (type === 'rows') {
         const rowIds = Array.from(selectedRows).join(',');
-        await axios.post(`http://localhost:8000/api/clean/${sessionId}/apply`, {
+        await axios.post(`${API_URL}/api/clean/${sessionId}/apply`, {
           issue: 'Manual Removal',
           columns: ['all'],
           method: 'Drop Row',
@@ -65,7 +68,7 @@ export default function WorkspacePage() {
         });
         setSelectedRows(new Set());
       } else if (type === 'columns') {
-        await axios.post(`http://localhost:8000/api/clean/${sessionId}/apply`, {
+        await axios.post(`${API_URL}/api/clean/${sessionId}/apply`, {
           issue: 'Manual Removal',
           columns: Array.from(selectedColumns),
           method: 'Drop Column',
@@ -101,7 +104,7 @@ export default function WorkspacePage() {
       if (reset) {
         setLoading(true);
       }
-      const res = await axios.get(`http://localhost:8000/api/table/${sessionId}`, {
+      const res = await axios.get(`${API_URL}/api/table/${sessionId}`, {
         params: { page: currentPage, limit, search, sort_col: sortCol, sort_order: sortOrder }
       });
       
@@ -124,7 +127,7 @@ export default function WorkspacePage() {
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get(`http://localhost:8000/api/clean/${sessionId}/history`);
+      const res = await axios.get(`${API_URL}/api/clean/${sessionId}/history`);
       setHistoryLogs(res.data.history || []);
     } catch (err) {
       console.error("Error fetching history:", err);
@@ -147,7 +150,7 @@ export default function WorkspacePage() {
     try {
       setIsProcessing(true);
       setProcessMessage("Undoing changes...");
-      await axios.post(`http://localhost:8000/api/clean/${sessionId}/undo`);
+      await axios.post(`${API_URL}/api/clean/${sessionId}/undo`);
       setPage(1);
       await fetchData(true, 1);
       await fetchHistory();
@@ -196,7 +199,7 @@ export default function WorkspacePage() {
     setIsProcessing(true);
     setProcessMessage("Cleaning data...");
     try {
-      await axios.post(`http://localhost:8000/api/clean/${sessionId}/apply`, {
+      await axios.post(`${API_URL}/api/clean/${sessionId}/apply`, {
         issue: 'Manual Removal',
         columns: [col],
         method: method,
@@ -528,7 +531,7 @@ function CleaningPopup({ sessionId, issue, onClose, onApply }) {
   useEffect(() => {
     const fetchRec = async () => {
       try {
-        const res = await axios.post(`http://localhost:8000/api/clean/${sessionId}/recommend`, { issue: issue.type, columns: [issue.col] });
+        const res = await axios.post(`${API_URL}/api/clean/${sessionId}/recommend`, { issue: issue.type, columns: [issue.col] });
         setRecommendation(res.data);
       } catch(err) {
         console.error("No recs");
@@ -565,7 +568,7 @@ function CleaningPopup({ sessionId, issue, onClose, onApply }) {
     if (!method) return alert("Select a cleaning method.");
     setLoading(true);
     try {
-      const res = await axios.post(`http://localhost:8000/api/clean/${sessionId}/preview`, {
+      const res = await axios.post(`${API_URL}/api/clean/${sessionId}/preview`, {
         issue: issue.type,
         columns: [issue.col],
         method: method,
@@ -583,7 +586,7 @@ function CleaningPopup({ sessionId, issue, onClose, onApply }) {
     if (!method) return alert("Select a cleaning method.");
     setApplying(true);
     try {
-      const res = await axios.post(`http://localhost:8000/api/clean/${sessionId}/apply`, {
+      const res = await axios.post(`${API_URL}/api/clean/${sessionId}/apply`, {
         issue: issue.type,
         columns: [issue.col],
         method: method,
