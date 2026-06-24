@@ -1,6 +1,6 @@
 # 📊 AI Data Visualization System
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen.svg)](https://data-visualization-and-analytics-system-5kqje197n.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen.svg)]([https://data-visualization-and-analytics-system-5kqje197n.vercel.app](https://data-visualization-and-analytics-sy.vercel.app?_vercel_share=7QZUgHThhXHJGmK4E4P7gwIusZnzqNHT))
 [![React](https://img.shields.io/badge/Frontend-React%20%7C%20Vite-blue.svg)](https://reactjs.org/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 
