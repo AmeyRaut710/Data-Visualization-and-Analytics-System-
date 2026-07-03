@@ -8,8 +8,6 @@ import DashboardPage from './pages/DashboardPage';
 import WorkspacePage from './pages/WorkspacePage';
 
 import VisualizationPage from './pages/VisualizationPage';
-import InsightPage from './pages/InsightPage';
-import ChatPage from './pages/ChatPage';
 import SettingsPage from './pages/SettingsPage';
 import TablePage from './pages/TablePage';
 
@@ -32,8 +30,6 @@ function App() {
             <NavLink to="/dashboard" icon={<LayoutDashboard />} label="Dashboard" />
 
             <NavLink to="/visualize" icon={<LineChart />} label="Visualizations" />
-            <NavLink to="/insights" icon={<BrainCircuit />} label="AI Insights" />
-            <NavLink to="/chat" icon={<MessageSquare />} label="Chat Assistant" />
           </nav>
           <div className="p-4 border-t border-slate-200">
             <NavLink to="/settings" icon={<Settings />} label="Settings" />
@@ -49,8 +45,6 @@ function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
 
             <Route path="/visualize" element={<VisualizationPage />} />
-            <Route path="/insights" element={<InsightPage />} />
-            <Route path="/chat" element={<ChatPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>

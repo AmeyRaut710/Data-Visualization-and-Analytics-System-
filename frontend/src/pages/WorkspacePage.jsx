@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, Navigate } from 'react-router-dom';
 import axios from 'axios';
+import { ArrowLeft, Search, Filter, Download, Save, RefreshCw, X, Check, Eye, Trash2, BrainCircuit, ArrowUpDown, ArrowUp, ArrowDown, Eraser, AlertTriangle, Undo2, Redo2, History, Loader2, Copy, BoxSelect, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { Navigate } from 'react-router-dom';
-import { ArrowLeft, Search, Filter, Download, Save, RefreshCw, X, Check, Eye, Trash2, BrainCircuit, ArrowUpDown, ArrowUp, ArrowDown, Eraser, AlertTriangle, Undo2, History, Loader2 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
 
@@ -17,9 +17,11 @@ export default function WorkspacePage() {
   const [sortCol, setSortCol] = useState('');
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('cleaned'); // 'cleaned' or 'raw'
 
   // History state
   const [historyLogs, setHistoryLogs] = useState([]);
+  const [historyPointer, setHistoryPointer] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
 
   // Cleaning Popup state
@@ -56,6 +58,7 @@ export default function WorkspacePage() {
     if (!window.confirm(confirmMsg)) return;
 
     setIsProcessing(true);
+    setViewMode('cleaned');
     setProcessMessage("Cleaning data...");
     try {
       if (type === 'rows') {
@@ -105,7 +108,7 @@ export default function WorkspacePage() {
         setLoading(true);
       }
       const res = await axios.get(`${API_URL}/api/table/${sessionId}`, {
-        params: { page: currentPage, limit, search, sort_col: sortCol, sort_order: sortOrder }
+        params: { dataset: viewMode, page: currentPage, limit, search, sort_col: sortCol, sort_order: sortOrder }
       });
       
       setColumns(res.data.columns.filter(c => c !== '_row_id'));
@@ -129,6 +132,7 @@ export default function WorkspacePage() {
     try {
       const res = await axios.get(`${API_URL}/api/clean/${sessionId}/history`);
       setHistoryLogs(res.data.history || []);
+      setHistoryPointer(res.data.pointer || 0);
     } catch (err) {
       console.error("Error fetching history:", err);
     }
@@ -144,11 +148,12 @@ export default function WorkspacePage() {
     }, 300);
     return () => clearTimeout(delayDebounceFn);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, search, sortCol, sortOrder]);
+  }, [sessionId, search, sortCol, sortOrder, viewMode]);
 
   const handleUndo = async () => {
     try {
       setIsProcessing(true);
+      setViewMode('cleaned');
       setProcessMessage("Undoing changes...");
       await axios.post(`${API_URL}/api/clean/${sessionId}/undo`);
       setPage(1);
@@ -157,6 +162,22 @@ export default function WorkspacePage() {
       setIsProcessing(false);
     } catch (err) {
       alert(err.response?.data?.detail || "Nothing to undo or error occurred.");
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRedo = async () => {
+    try {
+      setIsProcessing(true);
+      setViewMode('cleaned');
+      setProcessMessage("Redoing changes...");
+      await axios.post(`${API_URL}/api/clean/${sessionId}/redo`);
+      setPage(1);
+      await fetchData(true, 1);
+      await fetchHistory();
+      setIsProcessing(false);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Nothing to redo or error occurred.");
       setIsProcessing(false);
     }
   };
@@ -197,6 +218,7 @@ export default function WorkspacePage() {
     if (!window.confirm(`Are you sure you want to drop this ${method === 'Drop Column' ? 'column' : 'row'}?`)) return;
     
     setIsProcessing(true);
+    setViewMode('cleaned');
     setProcessMessage("Cleaning data...");
     try {
       await axios.post(`${API_URL}/api/clean/${sessionId}/apply`, {
@@ -250,6 +272,20 @@ export default function WorkspacePage() {
               Interactive Workspace
             </h1>
             <p className="text-sm text-slate-500 font-medium mt-1">Click highlighted cells to securely clean data in real-time RAM.</p>
+            <div className="mt-3 flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+              <button 
+                onClick={() => setViewMode('raw')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'raw' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Raw Data
+              </button>
+              <button 
+                onClick={() => setViewMode('cleaned')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${viewMode === 'cleaned' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Cleaned Data
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -271,17 +307,24 @@ export default function WorkspacePage() {
             )}
             <button 
               onClick={handleUndo}
-              disabled={historyLogs.length <= 1}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all border ${historyLogs.length > 1 ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm' : 'bg-slate-50 text-slate-400 border-transparent cursor-not-allowed'}`}
+              disabled={historyPointer === 0}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all border ${historyPointer > 0 ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm' : 'bg-slate-50 text-slate-400 border-transparent cursor-not-allowed'}`}
             >
               <Undo2 className="w-4 h-4" /> Undo
+            </button>
+            <button 
+              onClick={handleRedo}
+              disabled={historyPointer >= historyLogs.length - 1}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all border ${historyPointer < historyLogs.length - 1 ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm' : 'bg-slate-50 text-slate-400 border-transparent cursor-not-allowed'}`}
+            >
+              <Redo2 className="w-4 h-4" /> Redo
             </button>
             <button 
               onClick={() => setShowHistory(!showHistory)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all border shadow-sm ${showHistory ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'}`}
             >
               <History className="w-4 h-4" /> History
-              <span className="bg-indigo-100 text-indigo-700 text-xs px-1.5 py-0.5 rounded-md ml-1">{historyLogs.length - 1}</span>
+              <span className="bg-indigo-100 text-indigo-700 text-xs px-1.5 py-0.5 rounded-md ml-1">{historyPointer}/{Math.max(0, historyLogs.length - 1)}</span>
             </button>
 
             {/* Search */}
@@ -298,17 +341,51 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* Stats */}
-        {stats && (
-          <div className="flex flex-wrap gap-3 mt-6">
-            <StatBadge label="Total Rows" value={stats.total_rows.toLocaleString()} />
-            <StatBadge label="Columns" value={stats.total_columns.toLocaleString()} />
-            <StatBadge label="Missing Cells" value={stats.missing_values.toLocaleString()} alert={stats.missing_values > 0} color="rose" />
-            <StatBadge label="Empty Cells" value={stats.empty_cells.toLocaleString()} alert={stats.empty_cells > 0} color="orange" />
-            <StatBadge label="Duplicate Rows" value={stats.duplicates.toLocaleString()} alert={stats.duplicates > 0} color="amber" />
-            <StatBadge label="Outliers" value={stats.outliers ? stats.outliers.toLocaleString() : "0"} alert={stats.outliers > 0} color="purple" />
-          </div>
-        )}
+          {/* Summary Cards */}
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mt-6">
+              <SummaryCard title="Total Rows" count={stats.total_rows} color="slate" />
+              <SummaryCard title="Total Columns" count={stats.total_columns} color="slate" />
+              <SummaryCard 
+                title="Exact Duplicates" 
+                count={stats.duplicates} 
+                total={stats.total_rows}
+                color="blue" 
+                icon={Copy}
+                onClick={() => handleCellClick('all', 'Duplicate Rows')}
+              />
+              <SummaryCard 
+                title="Missing Values" 
+                count={stats.missing_values} 
+                total={stats.total_rows * stats.total_columns}
+                color="yellow" 
+                icon={AlertTriangle}
+                onClick={() => handleCellClick('all', 'Missing Values')}
+              />
+              <SummaryCard 
+                title="Empty Cells" 
+                count={stats.empty_cells} 
+                total={stats.total_rows * stats.total_columns}
+                color="orange" 
+                icon={BoxSelect}
+                onClick={() => handleCellClick('all', 'Empty Cells')}
+              />
+              <SummaryCard 
+                title="Outliers" 
+                count={stats.outliers || 0} 
+                total={stats.total_rows * stats.total_columns}
+                color="red" 
+                icon={TrendingUp}
+                onClick={() => handleCellClick('all', 'Outliers')}
+              />
+              <SummaryCard 
+                title="Cleanliness Score" 
+                count={`${stats.quality_score}%`} 
+                color="green" 
+                icon={CheckCircle2}
+              />
+            </div>
+          )}
       </div>
 
       {/* History Panel (Absolute) */}
@@ -321,9 +398,9 @@ export default function WorkspacePage() {
           <div className="overflow-y-auto p-4 flex-1">
             <ol className="relative border-l border-slate-200 ml-3 space-y-5">
               {historyLogs.map((log, idx) => (
-                <li key={idx} className="mb-2 ml-4">
-                  <div className={`absolute w-3 h-3 rounded-full mt-1 -left-1.5 border border-white ${idx === historyLogs.length - 1 ? 'bg-indigo-500 ring-4 ring-indigo-50' : 'bg-slate-300'}`}></div>
-                  <time className="mb-1 text-xs font-bold leading-none text-slate-400 uppercase">Version {idx}</time>
+                <li key={idx} className={`mb-2 ml-4 ${idx > historyPointer ? 'opacity-40' : ''}`}>
+                  <div className={`absolute w-3 h-3 rounded-full mt-1 -left-1.5 border border-white ${idx === historyPointer ? 'bg-indigo-500 ring-4 ring-indigo-50' : idx < historyPointer ? 'bg-indigo-300' : 'bg-slate-300'}`}></div>
+                  <time className={`mb-1 text-xs font-bold leading-none ${idx === historyPointer ? 'text-indigo-600' : 'text-slate-400'} uppercase`}>Version {idx}</time>
                   <p className="text-sm font-medium text-slate-700 mt-1">{log}</p>
                 </li>
               ))}
@@ -421,7 +498,7 @@ export default function WorkspacePage() {
                 const inconsistentCatCols = row._inconsistent_category_cols || [];
                 
                 return (
-                  <tr key={rIdx} style={{ height: `${ROW_HEIGHT}px` }} className={`hover:bg-indigo-50/50 transition-colors ${isDuplicate ? 'bg-yellow-50 cursor-pointer' : ''}`} onClick={() => isDuplicate ? handleCellClick('all', 'Duplicate Rows') : null}>
+                  <tr key={rIdx} style={{ height: `${ROW_HEIGHT}px` }} className={`hover:bg-indigo-50/50 transition-colors ${isDuplicate ? 'bg-blue-50 cursor-pointer' : ''}`} onClick={() => isDuplicate ? handleCellClick('all', 'Duplicate Rows') : null}>
                     <td className="px-4 py-2 border-r border-slate-100 text-center text-slate-400 font-medium w-24 overflow-hidden group/row relative">
                        <div className="flex flex-row items-center justify-center gap-2 h-full group-hover/row:opacity-0 transition-opacity">
                          <input 
@@ -464,14 +541,24 @@ export default function WorkspacePage() {
                       let cellClass = "px-4 py-2 border-r border-slate-100 max-w-[300px] truncate transition-colors ";
                       let issueType = null;
                       
-                      if (isMissing) { cellClass += "bg-red-100 text-red-800 font-bold cursor-pointer hover:bg-red-200 "; issueType = 'Missing Values'; }
+                      if (isMissing) { cellClass += "bg-yellow-100 text-yellow-800 font-bold cursor-pointer hover:bg-yellow-200 "; issueType = 'Missing Values'; }
                       else if (isEmpty) { cellClass += "bg-orange-100 text-orange-800 font-bold cursor-pointer hover:bg-orange-200 "; issueType = 'Empty Cells'; }
-                      else if (isInvalidType) { cellClass += "bg-blue-100 text-blue-800 font-bold cursor-pointer hover:bg-blue-200 "; issueType = 'Invalid Data Types'; }
+                      else if (isInvalidType) { cellClass += "bg-purple-100 text-purple-800 font-bold cursor-pointer hover:bg-purple-200 "; issueType = 'Invalid Data Types'; }
                       else if (isInconsistent) { cellClass += "bg-teal-100 text-teal-800 font-bold cursor-pointer hover:bg-teal-200 "; issueType = 'Inconsistent Categories'; }
-                      else if (isOutlier) { cellClass += "bg-purple-100 text-purple-800 font-bold cursor-pointer hover:bg-purple-200 "; issueType = 'Outliers'; }
+                      else if (isOutlier) { cellClass += "bg-red-100 text-red-800 font-bold cursor-pointer hover:bg-red-200 "; issueType = 'Outliers'; }
+
+                      let cellTitle = String(val);
+                      if (isMissing) {
+                        cellTitle = `Missing Value\nDetected As: ${val}\nColumn: ${col}\nRow: ${row._row_id !== undefined ? row._row_id : rIdx + 1}`;
+                      } else if (isEmpty) {
+                        cellTitle = `Empty Cell\nDetected As: (blank)\nColumn: ${col}\nRow: ${row._row_id !== undefined ? row._row_id : rIdx + 1}`;
+                      } else if (isOutlier && stats?.outlier_metadata?.[col]) {
+                        const meta = stats.outlier_metadata[col];
+                        cellTitle = `Outlier Detected\nMethod: ${meta.method}\nAllowed Range: ${meta.lower_bound} - ${meta.upper_bound}\nActual Value: ${val}`;
+                      }
 
                       return (
-                        <td key={col} className={cellClass} title={String(val)} onClick={(e) => {
+                        <td key={col} className={cellClass} title={cellTitle} onClick={(e) => {
                           if (issueType) {
                             e.stopPropagation();
                             handleCellClick(col, issueType);
@@ -511,7 +598,9 @@ export default function WorkspacePage() {
           onClose={() => setShowPopup(false)}
           onApply={() => {
             setShowPopup(false);
-            fetchData();
+            setViewMode('cleaned');
+            setPage(1);
+            fetchData(true, 1);
             fetchHistory();
           }}
         />
@@ -526,19 +615,7 @@ function CleaningPopup({ sessionId, issue, onClose, onApply }) {
   const [previewData, setPreviewData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [recommendation, setRecommendation] = useState(null);
 
-  useEffect(() => {
-    const fetchRec = async () => {
-      try {
-        const res = await axios.post(`${API_URL}/api/clean/${sessionId}/recommend`, { issue: issue.type, columns: [issue.col] });
-        setRecommendation(res.data);
-      } catch(err) {
-        console.error("No recs");
-      }
-    };
-    fetchRec();
-  }, [sessionId, issue]);
 
   const getExplanation = (type) => {
     switch(type) {
@@ -554,10 +631,10 @@ function CleaningPopup({ sessionId, issue, onClose, onApply }) {
 
   // Available methods based on data_cleaning.py
   const methods = {
-    'Missing Values': ['Mean Imputation', 'Median Imputation', 'Mode Imputation', 'Forward Fill', 'Backward Fill', 'Interpolate', 'Replace with Unknown', 'Drop Rows', 'Drop Column'],
-    'Empty Cells': ['Replace with Default Value', 'Replace with Mode', 'Replace with Custom User Value', 'Remove Rows'],
-    'Outliers': ['Remove Outliers', 'Cap to Upper Bound', 'Replace with Median', 'Replace with Mean', 'Keep Outliers'],
-    'Duplicate Rows': ['Keep First Occurrence', 'Keep Latest Occurrence', 'Merge Records'],
+    'Missing Values': ['Fill with Mean', 'Fill with Median', 'Fill with Mode', 'Fill using Previous Value', 'Fill using Next Value', 'Linear Interpolation', 'Replace with Custom Value', 'Delete Rows containing Missing Values', 'Delete Columns containing Missing Values', 'Ignore'],
+    'Empty Cells': ['Replace with NULL', 'Replace with Mean', 'Replace with Median', 'Replace with Mode', 'Replace with Previous Value', 'Replace with Next Value', 'Replace with Custom Value', 'Remove Rows containing Empty Cells', 'Remove Columns containing Empty Cells', 'Trim Spaces', 'Linear Interpolation', 'Ignore'],
+    'Outliers': ['Remove Outlier Rows', 'Replace using Mean', 'Replace using Median', 'Replace with Q1', 'Replace with Q3', 'Replace using Percentile', 'Winsorization', 'IQR Clipping', 'Z-Score Clipping', 'Cap Values', 'Ignore'],
+    'Duplicate Rows': ['Remove Exact Duplicates', 'Keep First', 'Keep Last', 'Keep Most Complete Row', 'Ignore'],
     'Invalid Data Types': ['Convert to Numeric', 'Convert to String'],
     'Inconsistent Categories': ['Standardize Format']
   };
@@ -627,16 +704,6 @@ function CleaningPopup({ sessionId, issue, onClose, onApply }) {
               <p className="text-sm text-slate-600">{getExplanation(issue.type)}</p>
             </div>
             
-            {recommendation && (
-              <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-                <h4 className="font-bold text-indigo-900 text-sm mb-1 flex items-center gap-1.5"><BrainCircuit className="w-4 h-4" /> AI Recommendation</h4>
-                <div className="mt-2 space-y-2">
-                  <div><span className="text-xs font-bold text-indigo-400 uppercase">Method</span> <p className="text-sm font-medium text-indigo-800 bg-white px-2 py-1 inline-block rounded shadow-sm border border-indigo-50 mt-0.5">{recommendation.recommended_method}</p></div>
-                  <div><span className="text-xs font-bold text-indigo-400 uppercase">Reasoning</span> <p className="text-sm text-indigo-700 leading-snug mt-0.5">{recommendation.reason}</p></div>
-                  <div><span className="text-xs font-bold text-indigo-400 uppercase">Confidence</span> <span className="text-sm font-bold text-indigo-600 block">{recommendation.confidence}</span></div>
-                </div>
-              </div>
-            )}
 
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Select Method</label>
@@ -699,12 +766,22 @@ function CleaningPopup({ sessionId, issue, onClose, onApply }) {
                       <tbody className="divide-y divide-slate-100">
                         {previewData.original_preview.slice(0, 5).map((origRow, i) => {
                           const cleanRow = previewData.cleaned_preview[i];
-                          const origVal = origRow[issue.col];
-                          const cleanVal = cleanRow[issue.col];
-                          const changed = origVal !== cleanVal;
+                          const isAllCols = issue.col === 'all';
+                          
+                          let origVal, cleanVal, changed;
+                          
+                          if (isAllCols) {
+                            origVal = "Row Data";
+                            cleanVal = cleanRow ? "Row Data" : "Removed";
+                            changed = !cleanRow;
+                          } else {
+                            origVal = origRow[issue.col];
+                            cleanVal = cleanRow ? cleanRow[issue.col] : undefined;
+                            changed = origVal !== cleanVal;
+                          }
                           
                           // Don't show unchanged rows to keep preview focused
-                          if (!changed && previewData.original_preview.length > 5) return null;
+                          if (!changed && previewData.original_preview.length > 5 && !isAllCols) return null;
                           
                           return (
                             <tr key={i} className={changed ? 'bg-indigo-50/30' : ''}>
@@ -753,6 +830,35 @@ function StatBadge({ label, value, alert, color = "indigo" }) {
       <span className="opacity-70 font-medium">{label}:</span>
       {value}
       {alert && <AlertTriangle className="w-3.5 h-3.5 ml-1" />}
+    </div>
+  );
+}
+
+function SummaryCard({ title, count, total, color, icon: Icon, onClick }) {
+  const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+  
+  const colors = {
+    blue: "bg-blue-50 border-blue-200 text-blue-700", // Duplicates
+    orange: "bg-orange-50 border-orange-200 text-orange-700", // Missing
+    yellow: "bg-yellow-50 border-yellow-200 text-yellow-700", // Empty
+    red: "bg-red-50 border-red-200 text-red-700", // Outliers
+    green: "bg-emerald-50 border-emerald-200 text-emerald-700", // Clean
+    slate: "bg-slate-50 border-slate-200 text-slate-700", // Default
+  };
+
+  return (
+    <div 
+      onClick={onClick}
+      className={`flex-1 min-w-[140px] p-4 rounded-2xl border ${onClick ? 'cursor-pointer hover:shadow-md hover:ring-2 ring-indigo-500/20 transition-all active:scale-95' : ''} ${colors[color] || colors.slate}`}
+    >
+      <div className="flex justify-between items-start mb-2">
+        <h4 className="font-bold text-xs md:text-sm opacity-80">{title}</h4>
+        {Icon && <Icon className="w-4 h-4 md:w-5 md:h-5 opacity-70" />}
+      </div>
+      <div className="flex items-end justify-between">
+        <span className="text-xl md:text-2xl font-black">{typeof count === 'number' ? count.toLocaleString() : count}</span>
+        {total !== undefined && <span className="text-xs md:text-sm font-bold opacity-70">{percentage}%</span>}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
 # Trigger backend reload for pyarrow
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="Data Analytics API",
     description="Agentic AI-Powered Intelligent Data Visualization and Analytics System API",
-    version="1.0.0"
+    version="1.0.0",
+    default_response_class=ORJSONResponse
 )
 
 # CORS middleware
@@ -18,6 +20,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 from app.api.routes import router as api_router
 

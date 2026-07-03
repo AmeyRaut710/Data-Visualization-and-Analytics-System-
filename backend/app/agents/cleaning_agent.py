@@ -52,12 +52,17 @@ class CleaningAgent:
         - If the column is a Date field, recommend 'Forward Fill' (maintains chronological continuity).
         - If the Missing Percentage is > 50%, recommend 'Drop Column'.
         
+        Empty Cells Specific Rules:
+        - If the column is Numeric, recommend 'Replace with Mean', 'Replace with Median', or 'Linear Interpolation'.
+        - If the column is Categorical, recommend 'Replace with Mode' or 'Replace with Custom Value'.
+        - If the column is Text, recommend 'Replace with Custom Value' or 'Replace with Mode'.
+        - If the column is Date, recommend 'Replace with Previous Value' (Forward Fill) or 'Replace with Next Value' (Backward Fill).
+        
         Frontend Methods Available based on Issue:
-        If Issue == 'Missing Values': 'Mean Imputation', 'Median Imputation', 'Mode Imputation', 'Forward Fill', 'Backward Fill', 'Interpolate', 'Replace with Unknown', 'Drop Rows', 'Drop Column', 'Keep As Is'
-        If Issue == 'Empty Cells': 'Remove Rows', 'Replace with Default Value', 'Replace with Mode', 'Replace with Custom User Value', 'Keep As Is'
-        If Issue == 'Outliers': 'Remove Outliers', 'Cap to Upper Bound', 'Replace with Median', 'Replace with Mean', 'Keep Outliers', 'Manual Review'
-        If Issue == 'Exact Duplicates': 'Remove Exact Duplicates', 'Keep First Occurrence', 'Keep Latest Occurrence', 'Manual Review'
-        If Issue == 'Business Duplicates': 'Remove Exact Duplicates', 'Keep First Occurrence', 'Keep Latest Occurrence', 'Merge Records', 'Manual Review'
+        If Issue == 'Missing Values': 'Fill with Mean', 'Fill with Median', 'Fill with Mode', 'Fill using Previous Value', 'Fill using Next Value', 'Linear Interpolation', 'Replace with Custom Value', 'Delete Rows containing Missing Values', 'Delete Columns containing Missing Values', 'Ignore'
+        If Issue == 'Empty Cells': 'Replace with NULL', 'Replace with Mean', 'Replace with Median', 'Replace with Mode', 'Replace with Previous Value', 'Replace with Next Value', 'Replace with Custom Value', 'Remove Rows containing Empty Cells', 'Remove Columns containing Empty Cells', 'Trim Spaces', 'Linear Interpolation', 'Ignore'
+        If Issue == 'Outliers': 'Remove Outlier Rows', 'Replace using Mean', 'Replace using Median', 'Replace using Percentile', 'Winsorization', 'IQR Clipping', 'Z-Score Clipping', 'Cap Values', 'Ignore'
+        If Issue == 'Duplicate Rows': 'Remove Exact Duplicates', 'Keep First', 'Keep Last', 'Keep Most Complete Row', 'Ignore'
         If Issue == 'Near Duplicates': 'Merge Records', 'Manual Review', 'Keep First Occurrence'
         If Issue == 'Duplicate Columns': 'Drop Column', 'Keep As Is'
         If Issue == 'Constant Columns': 'Drop Column', 'Keep As Is'

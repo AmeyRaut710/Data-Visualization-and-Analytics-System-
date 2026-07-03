@@ -1,189 +1,342 @@
-import pandas as pd
-import numpy as np
+import polars as pl
+from app.services.data_quality import DataQualityService
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DataCleaningService:
     @staticmethod
-    def apply_targeted_cleaning(df: pd.DataFrame, issue: str, columns: list, method: str, custom_value: str = None) -> pd.DataFrame:
-        cols_to_process = columns if columns and len(columns) > 0 and columns[0] != 'all' else df.columns.tolist()
+    def apply_targeted_cleaning(pldf: pl.DataFrame, issue: str, columns: list, method: str, custom_value: str = None, cache: dict = None) -> pl.DataFrame:
+        cols_to_process = columns if columns and len(columns) > 0 and columns[0] != 'all' else pldf.columns
         
-        # Heavy operations optimized with Polars
-        if issue in ['Missing Values', 'Empty Cells', 'Outliers', 'Duplicate Rows', 'Exact Duplicates', 'Business Duplicates', 'Near Duplicates', 'Extra Spaces', 'Special Characters']:
-            import polars as pl
-            from app.services.data_quality import DataQualityService
+        if method == 'Ignore':
+            return pldf
             
-            # Sanitize mixed type object columns before polars conversion
-            df_safe = df.copy()
-            for col in df_safe.select_dtypes(include=['object']).columns:
-                df_safe[col] = df_safe[col].apply(lambda x: str(x) if pd.notnull(x) else x)
-                
-            pldf = pl.from_pandas(df_safe, include_index=True)
-            index_col = pldf.columns[0] # Usually 'index'
-            
+        try:
             if issue == 'Missing Values':
-                missing_set = DataQualityService.MISSING_VALUES_SET
-                
-                # First, standardize missing values to null
-                for col in cols_to_process:
-                    if pldf[col].dtype in [pl.Utf8, pl.Categorical]:
-                        pldf = pldf.with_columns(
-                            pl.when(pl.col(col).str.strip_chars().str.to_lowercase().is_in(list(missing_set)))
-                            .then(None)
-                            .otherwise(pl.col(col))
-                            .alias(col)
-                        )
-                
-                if method == 'Drop Rows':
-                    pldf = pldf.drop_nulls(subset=cols_to_process)
-                elif method == 'Drop Column':
-                    pldf = pldf.drop(cols_to_process)
-                elif method == 'Replace with Unknown':
-                    for col in cols_to_process:
-                        pldf = pldf.with_columns(pl.col(col).fill_null("Unknown"))
-                elif method == 'Mean Imputation':
-                    for col in cols_to_process:
-                        if pldf[col].dtype in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
-                            pldf = pldf.with_columns(pl.col(col).fill_null(pl.col(col).mean()))
-                elif method == 'Median Imputation':
-                    for col in cols_to_process:
-                        if pldf[col].dtype in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
-                            pldf = pldf.with_columns(pl.col(col).fill_null(pl.col(col).median()))
-                elif method in ['Mode Imputation', 'Forward Fill', 'Backward Fill', 'Interpolate']:
-                    # Fallback to pandas for complex imputations
-                    cleaned_df = pldf.to_pandas().set_index(index_col)
-                    cleaned_df.index.name = df.index.name
-                    for col in cols_to_process:
-                        if method == 'Mode Imputation':
-                            if not cleaned_df[col].mode().empty:
-                                cleaned_df[col] = cleaned_df[col].fillna(cleaned_df[col].mode()[0])
-                        elif method == 'Forward Fill':
-                            cleaned_df[col] = cleaned_df[col].ffill()
-                        elif method == 'Backward Fill':
-                            cleaned_df[col] = cleaned_df[col].bfill()
-                        elif method == 'Interpolate':
-                            if pd.api.types.is_numeric_dtype(cleaned_df[col]) or pd.api.types.is_datetime64_any_dtype(cleaned_df[col]):
-                                cleaned_df[col] = cleaned_df[col].interpolate()
-                    return cleaned_df
-            
+                return DataCleaningService._clean_missing_values(pldf, cols_to_process, method, custom_value, cache)
             elif issue == 'Empty Cells':
-                if method == 'Remove Rows':
-                    # Drop row if ANY column in cols_to_process is empty string
-                    exprs = [(pl.col(c).is_not_null()) & (pl.col(c).cast(pl.Utf8).str.strip_chars() == "") for c in cols_to_process if pldf[c].dtype in [pl.Utf8, pl.Categorical]]
-                    if exprs:
-                        mask = pl.any_horizontal(exprs)
-                        pldf = pldf.filter(~mask)
-                else:
-                    for col in cols_to_process:
-                        if pldf[col].dtype in [pl.Utf8, pl.Categorical]:
-                            is_empty = (pl.col(col).is_not_null()) & (pl.col(col).str.strip_chars() == "")
-                            if method == 'Replace with Default Value':
-                                pldf = pldf.with_columns(pl.when(is_empty).then(pl.lit("Unknown")).otherwise(pl.col(col)).alias(col))
-                            elif method == 'Replace with Custom User Value':
-                                pldf = pldf.with_columns(pl.when(is_empty).then(pl.lit(custom_value or "Unknown")).otherwise(pl.col(col)).alias(col))
-                            elif method == 'Replace with Mode':
-                                # Fallback to pandas for mode calculation
-                                cleaned_df = pldf.to_pandas().set_index(index_col)
-                                valid_data = cleaned_df[col][~cleaned_df[col].astype(str).str.match(r'^\s*$', na=False)]
-                                if not valid_data.mode().empty:
-                                    cleaned_df[col] = cleaned_df[col].replace(r'^\s*$', valid_data.mode()[0], regex=True)
-                                return cleaned_df
-                                
+                return DataCleaningService._clean_empty_cells(pldf, cols_to_process, method, custom_value, cache)
             elif issue == 'Outliers':
-                for col in cols_to_process:
-                    if pldf[col].dtype in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
-                        s = pldf[col].drop_nulls()
-                        if len(s) < 10: continue
-                        
-                        q1 = s.quantile(0.25)
-                        q3 = s.quantile(0.75)
-                        iqr = q3 - q1
-                        lower = q1 - 1.5 * iqr
-                        upper = q3 + 1.5 * iqr
-                        
-                        is_outlier = (pl.col(col) < lower) | (pl.col(col) > upper)
-                        
-                        if method == 'Remove Outliers':
-                            pldf = pldf.filter(~is_outlier | pl.col(col).is_null())
-                        elif method == 'Cap to Upper Bound':
-                            pldf = pldf.with_columns(pl.when(pl.col(col) > upper).then(pl.lit(upper)).otherwise(pl.col(col)).alias(col))
-                        elif method == 'Replace with Median':
-                            med = s.median()
-                            pldf = pldf.with_columns(pl.when(is_outlier).then(pl.lit(med)).otherwise(pl.col(col)).alias(col))
-                        elif method == 'Replace with Mean':
-                            mean_val = s.mean()
-                            pldf = pldf.with_columns(pl.when(is_outlier).then(pl.lit(mean_val)).otherwise(pl.col(col)).alias(col))
-
+                return DataCleaningService._clean_outliers(pldf, cols_to_process, method, cache)
             elif issue in ['Duplicate Rows', 'Exact Duplicates', 'Business Duplicates', 'Near Duplicates']:
-                subset = cols_to_process if cols_to_process and cols_to_process[0] != 'all' else None
-                if method == 'Remove Exact Duplicates' or method == 'Keep First Occurrence':
-                    pldf = pldf.unique(subset=subset, keep='first')
-                elif method == 'Keep Latest Occurrence':
-                    pldf = pldf.unique(subset=subset, keep='last')
-                elif method == 'Merge Records':
-                    # Fallback to pandas for complex merge/ffill
-                    cleaned_df = pldf.to_pandas().set_index(index_col)
-                    cleaned_df.index.name = df.index.name
-                    if subset:
-                        cleaned_df = cleaned_df.groupby(subset, as_index=False).apply(lambda x: x.bfill().ffill().iloc[0]).reset_index(drop=True)
-                    else:
-                        cleaned_df = cleaned_df.drop_duplicates(keep='first')
-                    return cleaned_df
-                    
+                return DataCleaningService._clean_duplicates(pldf, cols_to_process, method, cache)
             elif issue == 'Extra Spaces' and method == 'Trim Spaces':
-                for col in cols_to_process:
-                    if pldf[col].dtype in [pl.Utf8, pl.Categorical]:
-                        pldf = pldf.with_columns(pl.col(col).str.strip_chars().alias(col))
-                        
+                return DataCleaningService._clean_extra_spaces(pldf, cols_to_process)
             elif issue == 'Special Characters' and method == 'Remove Special Characters':
-                for col in cols_to_process:
-                    if pldf[col].dtype in [pl.Utf8, pl.Categorical]:
-                        pldf = pldf.with_columns(pl.col(col).str.replace_all(r'[^\w\s\.\,\-\@\_]', '').alias(col))
-            
-            # Convert back to pandas
-            res = pldf.to_pandas().set_index(index_col)
-            res.index.name = df.index.name
-            return res
+                return DataCleaningService._clean_special_chars(pldf, cols_to_process)
+            elif issue in ['Constant Columns', 'High Cardinality']:
+                return DataCleaningService._clean_drop_columns(pldf, cols_to_process, method)
+            elif issue == 'Invalid Data Types':
+                return DataCleaningService._clean_invalid_types(pldf, cols_to_process, method)
+            elif issue in ['Duplicate Columns', 'High Null Percentage Columns']:
+                return DataCleaningService._clean_drop_columns(pldf, cols_to_process, method)
+            elif issue == 'Inconsistent Categories':
+                return DataCleaningService._clean_inconsistent_categories(pldf, cols_to_process, method)
+            elif issue == 'Date Format Problems':
+                return DataCleaningService._clean_dates(pldf, cols_to_process, method)
+            elif issue == 'Manual Removal':
+                return DataCleaningService._clean_manual(pldf, cols_to_process, method, custom_value)
+                
+            return pldf
+        except Exception as e:
+            logger.error(f"Error applying {method} for {issue}: {str(e)}")
+            return pldf
 
-        # Fallback to pandas for other methods
-        cleaned_df = df.copy()
+    @staticmethod
+    def _clean_missing_values(pldf: pl.DataFrame, cols: list, method: str, custom_value: str, cache: dict):
+        if method in ['Drop Rows', 'Delete Rows containing Missing Values']:
+            missing_idx = []
+            for col in cols:
+                if cache and col in cache.get("missing_indices", {}):
+                    missing_idx.extend(cache["missing_indices"][col])
+            if missing_idx:
+                return pldf.with_row_index("idx").filter(~pl.col("idx").is_in(set(missing_idx))).drop("idx")
+            return pldf
+            
+        elif method in ['Drop Column', 'Delete Columns containing Missing Values']:
+            return pldf.drop(cols)
+            
+        pldf = pldf.with_row_index("idx")
+        exprs = []
+        for col in cols:
+            target_idx = set(cache.get("missing_indices", {}).get(col, [])) if cache else set()
+            if not target_idx:
+                continue
+                
+            if method == 'Replace with Custom Value':
+                dtype = pldf.schema[col]
+                if dtype in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    try: val = float(custom_value)
+                    except: val = None
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(val)).otherwise(pl.col(col)).alias(col))
+                else:
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(custom_value or "Unknown")).otherwise(pl.col(col)).alias(col))
+                    
+            elif method == 'Fill with Mean' or method == 'Replace with Mean':
+                if pldf.schema[col] in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    mean_val = cache.get("stats", {}).get(col, {}).get("mean") if cache else None
+                    if mean_val is not None:
+                        exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(mean_val)).otherwise(pl.col(col)).alias(col))
+                        
+            elif method == 'Fill with Median' or method == 'Replace with Median':
+                if pldf.schema[col] in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    med_val = cache.get("stats", {}).get(col, {}).get("median") if cache else None
+                    if med_val is not None:
+                        exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(med_val)).otherwise(pl.col(col)).alias(col))
+                        
+            elif method == 'Fill with Mode' or method == 'Replace with Mode':
+                mode_val = cache.get("stats", {}).get(col, {}).get("mode") if cache else None
+                if mode_val is not None:
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(mode_val)).otherwise(pl.col(col)).alias(col))
+                    
+            elif method in ['Fill using Previous Value', 'Replace with Previous Value']:
+                filled_col = pl.col(col).fill_null(strategy="forward")
+                exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(filled_col).otherwise(pl.col(col)).alias(col))
+                
+            elif method in ['Fill using Next Value', 'Replace with Next Value']:
+                filled_col = pl.col(col).fill_null(strategy="backward")
+                exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(filled_col).otherwise(pl.col(col)).alias(col))
+                
+            elif method == 'Linear Interpolation':
+                if pldf.schema[col] in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    filled_col = pl.col(col).interpolate()
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(filled_col).otherwise(pl.col(col)).alias(col))
+
+        if exprs:
+            pldf = pldf.with_columns(exprs)
+            
+        return pldf.drop("idx")
+
+    @staticmethod
+    def _clean_empty_cells(pldf: pl.DataFrame, cols: list, method: str, custom_value: str, cache: dict):
+        if method in ['Remove Rows', 'Remove Rows containing Empty Cells']:
+            empty_idx = []
+            for col in cols:
+                if cache and col in cache.get("empty_indices", {}):
+                    empty_idx.extend(cache["empty_indices"][col])
+            if empty_idx:
+                return pldf.with_row_index("idx").filter(~pl.col("idx").is_in(set(empty_idx))).drop("idx")
+            return pldf
+            
+        elif method == 'Remove Columns containing Empty Cells':
+            return pldf.drop(cols)
+
+        pldf = pldf.with_row_index("idx")
+        exprs = []
+        for col in cols:
+            target_idx = set(cache.get("empty_indices", {}).get(col, [])) if cache else set()
+            if not target_idx: continue
+            
+            if method == 'Trim Spaces':
+                if pldf.schema[col] in [pl.Utf8, pl.Categorical]:
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.col(col).str.strip_chars()).otherwise(pl.col(col)).alias(col))
+            elif method == 'Replace with NULL':
+                exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(None).otherwise(pl.col(col)).alias(col))
+            elif method == 'Replace with Custom Value':
+                dtype = pldf.schema[col]
+                if dtype in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    try: val = float(custom_value)
+                    except: val = None
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(val)).otherwise(pl.col(col)).alias(col))
+                else:
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(custom_value or "Unknown")).otherwise(pl.col(col)).alias(col))
+            elif method == 'Replace with Mode' or method == 'Fill with Mode':
+                mode_val = cache.get("stats", {}).get(col, {}).get("mode") if cache else None
+                if mode_val is not None:
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(mode_val)).otherwise(pl.col(col)).alias(col))
+            elif method == 'Replace with Mean' or method == 'Fill with Mean':
+                if pldf.schema[col] in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    mean_val = cache.get("stats", {}).get(col, {}).get("mean") if cache else None
+                    if mean_val is not None:
+                        exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(mean_val)).otherwise(pl.col(col)).alias(col))
+            elif method == 'Replace with Median' or method == 'Fill with Median':
+                if pldf.schema[col] in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    med_val = cache.get("stats", {}).get(col, {}).get("median") if cache else None
+                    if med_val is not None:
+                        exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(pl.lit(med_val)).otherwise(pl.col(col)).alias(col))
+            elif method in ['Fill using Previous Value', 'Replace with Previous Value']:
+                filled_col = pl.col(col).fill_null(strategy="forward")
+                exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(filled_col).otherwise(pl.col(col)).alias(col))
+            elif method in ['Fill using Next Value', 'Replace with Next Value']:
+                filled_col = pl.col(col).fill_null(strategy="backward")
+                exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(filled_col).otherwise(pl.col(col)).alias(col))
+            elif method == 'Linear Interpolation':
+                if pldf.schema[col] in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                    filled_col = pl.col(col).interpolate()
+                    exprs.append(pl.when(pl.col("idx").is_in(target_idx)).then(filled_col).otherwise(pl.col(col)).alias(col))
+
+        if exprs:
+            pldf = pldf.with_columns(exprs)
+            
+        return pldf.drop("idx")
+
+    @staticmethod
+    def _clean_outliers(pldf: pl.DataFrame, cols: list, method: str, cache: dict):
+        exprs = []
+        filter_mask = None
         
-        if issue == 'Constant Columns' or issue == 'High Cardinality':
-            if method == 'Drop Column':
-                cleaned_df = cleaned_df.drop(columns=cols_to_process, errors='ignore')
+        for col in cols:
+            if pldf.schema[col] in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]:
+                col_stats = cache.get("stats", {}).get(col) if cache else None
                 
-        elif issue == 'Invalid Data Types':
+                if col_stats and "lower_bound" in col_stats and col_stats["lower_bound"] is not None:
+                    lower = col_stats["lower_bound"]
+                    upper = col_stats["upper_bound"]
+                    mean = col_stats.get("mean")
+                    med = col_stats.get("median")
+                    std = col_stats.get("std")
+                else:
+                    s = pldf.get_column(col).drop_nulls()
+                    if len(s) < 10: continue
+                    q1 = s.quantile(0.25)
+                    q3 = s.quantile(0.75)
+                    iqr = q3 - q1
+                    lower = q1 - 1.5 * iqr
+                    upper = q3 + 1.5 * iqr
+                    mean = s.mean()
+                    med = s.median()
+                    std = s.std()
+                
+                is_outlier = (pl.col(col) < lower) | (pl.col(col) > upper)
+                
+                if method in ['Remove Outliers', 'Remove Outlier Rows']:
+                    col_mask = ~is_outlier | pl.col(col).is_null()
+                    filter_mask = col_mask if filter_mask is None else filter_mask & col_mask
+                elif method in ['Cap to Upper Bound', 'Cap Values', 'IQR Clipping']:
+                    exprs.append(
+                        pl.when(pl.col(col) > upper).then(pl.lit(upper))
+                        .when(pl.col(col) < lower).then(pl.lit(lower))
+                        .otherwise(pl.col(col)).alias(col)
+                    )
+                elif method == 'Winsorization':
+                    p5 = col_stats.get("p5") if col_stats else pldf.get_column(col).drop_nulls().quantile(0.05)
+                    p95 = col_stats.get("p95") if col_stats else pldf.get_column(col).drop_nulls().quantile(0.95)
+                    exprs.append(
+                        pl.when(pl.col(col) > p95).then(pl.lit(p95))
+                        .when(pl.col(col) < p5).then(pl.lit(p5))
+                        .otherwise(pl.col(col)).alias(col)
+                    )
+                elif method == 'Z-Score Clipping':
+                    if std and std > 0:
+                        z_lower = mean - 3 * std
+                        z_upper = mean + 3 * std
+                        exprs.append(
+                            pl.when(pl.col(col) > z_upper).then(pl.lit(z_upper))
+                            .when(pl.col(col) < z_lower).then(pl.lit(z_lower))
+                            .otherwise(pl.col(col)).alias(col)
+                        )
+                elif method == 'Replace using Median':
+                    exprs.append(pl.when(is_outlier).then(pl.lit(med)).otherwise(pl.col(col)).alias(col))
+                elif method == 'Replace using Mean':
+                    exprs.append(pl.when(is_outlier).then(pl.lit(mean)).otherwise(pl.col(col)).alias(col))
+                elif method == 'Replace with Q1':
+                    q1 = col_stats.get("q1") if col_stats else pldf.get_column(col).drop_nulls().quantile(0.25)
+                    exprs.append(pl.when(is_outlier).then(pl.lit(q1)).otherwise(pl.col(col)).alias(col))
+                elif method == 'Replace with Q3':
+                    q3 = col_stats.get("q3") if col_stats else pldf.get_column(col).drop_nulls().quantile(0.75)
+                    exprs.append(pl.when(is_outlier).then(pl.lit(q3)).otherwise(pl.col(col)).alias(col))
+                elif method == 'Replace using Percentile':
+                    p90 = col_stats.get("p90") if col_stats else pldf.get_column(col).drop_nulls().quantile(0.90)
+                    exprs.append(pl.when(is_outlier).then(pl.lit(p90)).otherwise(pl.col(col)).alias(col))
+                    
+        if filter_mask is not None:
+            pldf = pldf.filter(filter_mask)
+        if exprs:
+            pldf = pldf.with_columns(exprs)
+            
+        return pldf
+
+    @staticmethod
+    def _clean_duplicates(pldf: pl.DataFrame, cols: list, method: str, cache: dict):
+        # Only use pre-computed exact duplicates if we are applying to ALL columns and issue is Exact Duplicates
+        if cache and "dup_groups" in cache and (not cols or cols[0] == 'all' or len(cols) == pldf.width):
+            dup_groups = cache["dup_groups"]
+            indices_to_drop = []
+            
+            if method in ['Remove Exact Duplicates', 'Keep First Occurrence', 'Keep First', 'Merge Records', 'Merge Duplicate Records', 'Keep Most Complete Row']:
+                for group in dup_groups:
+                    indices_to_drop.extend(group[1:])
+            elif method in ['Keep Latest Occurrence', 'Keep Last']:
+                for group in dup_groups:
+                    indices_to_drop.extend(group[:-1])
+                    
+            if indices_to_drop:
+                pldf = pldf.with_row_index("idx_manual_drop")
+                pldf = pldf.filter(~pl.col("idx_manual_drop").is_in(indices_to_drop)).drop("idx_manual_drop")
+            return pldf
+            
+        # Fallback for column subsets or missing cache
+        subset = cols if cols and cols[0] != 'all' else None
+        if method in ['Remove Exact Duplicates', 'Keep First Occurrence', 'Keep First', 'Merge Records', 'Merge Duplicate Records', 'Keep Most Complete Row']:
+            return pldf.unique(subset=subset, keep='first')
+        elif method in ['Keep Latest Occurrence', 'Keep Last']:
+            return pldf.unique(subset=subset, keep='last')
+        return pldf
+
+    @staticmethod
+    def _clean_extra_spaces(pldf: pl.DataFrame, cols: list):
+        exprs = []
+        for col in cols:
+            if pldf.schema[col] in [pl.Utf8, pl.Categorical]:
+                exprs.append(pl.col(col).str.strip_chars().alias(col))
+        if exprs: pldf = pldf.with_columns(exprs)
+        return pldf
+
+    @staticmethod
+    def _clean_special_chars(pldf: pl.DataFrame, cols: list):
+        exprs = []
+        for col in cols:
+            if pldf.schema[col] in [pl.Utf8, pl.Categorical]:
+                exprs.append(pl.col(col).str.replace_all(r'[^\w\s\.\,\-\@\_]', '').alias(col))
+        if exprs: pldf = pldf.with_columns(exprs)
+        return pldf
+
+    @staticmethod
+    def _clean_drop_columns(pldf: pl.DataFrame, cols: list, method: str):
+        if method in ['Drop Column', 'Drop Duplicate Columns', 'Drop Columns']:
+            return pldf.drop(cols)
+        return pldf
+
+    @staticmethod
+    def _clean_invalid_types(pldf: pl.DataFrame, cols: list, method: str):
+        exprs = []
+        for col in cols:
             if method == 'Convert to Numeric':
-                for col in cols_to_process:
-                    cleaned_df[col] = pd.to_numeric(cleaned_df[col], errors='coerce')
+                exprs.append(pl.col(col).cast(pl.Float64, strict=False).alias(col))
             elif method == 'Convert to String':
-                for col in cols_to_process:
-                    cleaned_df[col] = cleaned_df[col].astype(str)
-                    
-        elif issue == 'Duplicate Columns' or issue == 'High Null Percentage Columns':
-            if method == 'Drop Duplicate Columns' or method == 'Drop Columns':
-                cleaned_df = cleaned_df.drop(columns=cols_to_process, errors='ignore')
-                
-        elif issue == 'Inconsistent Categories':
-            if method == 'Standardize Format':
-                for col in cols_to_process:
-                    if cleaned_df[col].dtype == 'object' or cleaned_df[col].dtype == 'string':
-                        cleaned_df[col] = cleaned_df[col].astype(str).str.title()
-                        
-        elif issue == 'Date Format Problems':
-            if method == 'Convert to Single Format':
-                for col in cols_to_process:
-                    cleaned_df[col] = pd.to_datetime(cleaned_df[col], format='mixed', errors='coerce').dt.strftime('%Y-%m-%d')
-                    
-        elif issue == 'Manual Removal':
-            if method == 'Drop Column':
-                cleaned_df = cleaned_df.drop(columns=cols_to_process, errors='ignore')
-            elif method == 'Drop Row':
-                try:
-                    if custom_value:
-                        idx_to_drop = [int(x.strip()) for x in str(custom_value).split(',')]
-                        valid_idx = [i for i in idx_to_drop if i in cleaned_df.index]
-                        if valid_idx:
-                            cleaned_df = cleaned_df.drop(index=valid_idx)
-                except (ValueError, TypeError):
-                    pass
-                        
-        return cleaned_df
+                exprs.append(pl.col(col).cast(pl.Utf8).alias(col))
+        if exprs: pldf = pldf.with_columns(exprs)
+        return pldf
+        
+    @staticmethod
+    def _clean_inconsistent_categories(pldf: pl.DataFrame, cols: list, method: str):
+        exprs = []
+        if method == 'Standardize Format':
+            for col in cols:
+                if pldf.schema[col] in [pl.Utf8, pl.Categorical]:
+                    exprs.append(pl.col(col).str.to_lowercase().alias(col))
+        if exprs: pldf = pldf.with_columns(exprs)
+        return pldf
+        
+    @staticmethod
+    def _clean_dates(pldf: pl.DataFrame, cols: list, method: str):
+        exprs = []
+        if method == 'Convert to Single Format':
+            for col in cols:
+                exprs.append(pl.col(col).str.strptime(pl.Datetime, strict=False).alias(col))
+        if exprs: pldf = pldf.with_columns(exprs)
+        return pldf
+        
+    @staticmethod
+    def _clean_manual(pldf: pl.DataFrame, cols: list, method: str, custom_value: str):
+        if method == 'Drop Column':
+            return pldf.drop(cols)
+        elif method == 'Drop Row':
+            try:
+                if custom_value:
+                    idx_to_drop = [int(x.strip()) for x in str(custom_value).split(',')]
+                    pldf = pldf.with_row_index("idx_manual_drop")
+                    pldf = pldf.filter(~pl.col("idx_manual_drop").is_in(idx_to_drop)).drop("idx_manual_drop")
+            except: pass
+        return pldf

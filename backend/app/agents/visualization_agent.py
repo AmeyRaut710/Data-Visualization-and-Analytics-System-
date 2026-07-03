@@ -28,6 +28,7 @@ class VisualizationAgent:
         date_cols = df_valid.select_dtypes(include=['datetime64', 'datetime64[ns]']).columns.tolist()
         
         visualizations = []
+        MAX_VISUALIZATIONS = 150 # Global cap to ensure high performance
         
         def safe_float(val):
             try:
@@ -45,24 +46,23 @@ class VisualizationAgent:
                 return 0
 
         try:
-            # 1. Correlation Heatmap & Scatter Plots (using highest correlations)
+            # 1. Correlation Heatmap
             if len(numerical_cols) >= 2:
-                # Compute correlation matrix
-                corr_matrix = df_valid[numerical_cols].corr().round(2).fillna(0)
+                # Limit to top 30 numerical cols for heatmap to avoid overwhelming the UI
+                heat_cols = numerical_cols[:30]
+                sample_size_corr = min(10000, len(df_valid))
+                corr_matrix = df_valid[heat_cols].sample(n=sample_size_corr, random_state=42).corr().round(2).fillna(0)
                 
-                # Extract upper triangle pairs to find top correlations for scatter plots
                 pairs = []
-                for i in range(len(numerical_cols)):
-                    for j in range(i+1, len(numerical_cols)):
-                        col1 = numerical_cols[i]
-                        col2 = numerical_cols[j]
+                for i in range(len(heat_cols)):
+                    for j in range(i+1, len(heat_cols)):
+                        col1 = heat_cols[i]
+                        col2 = heat_cols[j]
                         val = corr_matrix.loc[col1, col2]
                         pairs.append((col1, col2, val))
                         
-                # Sort by absolute correlation to find strongest relationships
                 pairs.sort(key=lambda x: abs(x[2]), reverse=True)
                 
-                # Heatmap Insight
                 strongest_pair = pairs[0] if pairs else None
                 heatmap_insight = ""
                 if strongest_pair and abs(strongest_pair[2]) > 0.3:
@@ -71,7 +71,6 @@ class VisualizationAgent:
                 else:
                     heatmap_insight = "Most numerical variables show weak or no linear correlation with each other."
 
-                # Add Heatmap
                 data_points = []
                 for i, row_col in enumerate(corr_matrix.columns):
                     for j, col_col in enumerate(corr_matrix.columns):
@@ -86,15 +85,15 @@ class VisualizationAgent:
                     "y_axis_column": "ALL_NUMERICAL",
                     "relevance_score": 95,
                     "chart_purpose": "Correlation Heatmap",
-                    "key_findings": "Matrix of linear relationships between all numerical variables.",
+                    "key_findings": "Matrix of linear relationships between numerical variables.",
                     "business_meaning": heatmap_insight,
                     "data": data_points
                 })
                 
-                # Top 3 Scatter Plots based on highest correlations
-                for pair in pairs[:3]:
+                # Top Scatter Plots (Filtered by Threshold)
+                for pair in pairs:
                     xcol, ycol, corr_val = pair
-                    if abs(corr_val) < 0.1: # Skip if virtually no correlation even among the "top"
+                    if abs(corr_val) < 0.15: # RELEVANCE THRESHOLD
                         continue
                         
                     sample_size = min(2000, len(df_valid))
@@ -114,30 +113,22 @@ class VisualizationAgent:
                         "chart_type": "scatter",
                         "x_axis_column": str(xcol),
                         "y_axis_column": str(ycol),
-                        "relevance_score": int(80 + abs(corr_val)*20), # higher corr = higher relevance
+                        "relevance_score": int(70 + abs(corr_val)*30),
                         "chart_purpose": f"{ycol} vs {xcol}",
-                        "key_findings": f"Scatter plot showing the distribution between {ycol} and {xcol}.",
-                        "trend_summary": f"There is a {strength} {direction} correlation (r={corr_val}) between these variables.",
+                        "key_findings": f"Scatter plot showing how {ycol} behaves in relation to {xcol}.",
+                        "trend_summary": f"There is a {strength} {direction} correlation (r={corr_val}) meaning as {xcol} increases, {ycol} tends to {'increase' if corr_val > 0 else 'decrease'}.",
                         "data": data_points
                     })
                 
-            # 2. Histograms (Top 5 numerical cols by highest variance)
+            # 2. Histograms (All Numerical columns)
             if numerical_cols:
-                # Sort numerical columns by coefficient of variation (std/mean) to find most "interesting" distributions
-                col_vars = []
-                for col in numerical_cols:
-                    mean_val = df_valid[col].mean()
-                    if pd.notna(mean_val) and mean_val != 0:
-                        cv = abs(df_valid[col].std() / mean_val)
-                        col_vars.append((col, cv))
-                
-                col_vars.sort(key=lambda x: x[1], reverse=True)
-                top_num_cols = [c[0] for c in col_vars[:5]] if col_vars else numerical_cols[:5]
-                
-                for xcol in top_num_cols:
+                for xcol in numerical_cols:
                     hist, bin_edges = pd.cut(df_valid[xcol], bins=20, retbins=True)
                     counts = hist.value_counts().sort_index()
                     
+                    if len(counts) == 0 or len(df_valid.dropna(subset=[xcol])) == 0:
+                        continue
+                        
                     max_idx = counts.argmax()
                     peak_start = bin_edges[max_idx]
                     peak_end = bin_edges[max_idx+1]
@@ -154,21 +145,25 @@ class VisualizationAgent:
                         "chart_type": "histogram",
                         "x_axis_column": str(xcol),
                         "y_axis_column": "count",
-                        "relevance_score": 90,
+                        "relevance_score": 85,
                         "chart_purpose": f"Distribution of {xcol}",
-                        "key_findings": f"Histogram showing the frequency distribution of {xcol}.",
-                        "business_meaning": f"The most common range is between {safe_float(peak_start):.2f} and {safe_float(peak_end):.2f}, containing {peak_pct:.1f}% of the data.",
+                        "key_findings": f"Visualizes the spread and shape of {xcol} data points.",
+                        "business_meaning": f"The most common range of {xcol} falls between {safe_float(peak_start):.2f} and {safe_float(peak_end):.2f}, accounting for {peak_pct:.1f}% of all records.",
                         "data": data_points
                     })
                 
-            # 3. Categorical Bar / Pie (Top 5 categorical cols)
-            # Sort categorical columns by uniqueness (fewer unique values = better pie chart, but skip if only 1 value)
+            # 3. Categorical Bar / Pie / Donut (All valid categorical cols)
             valid_cats = [c for c in categorical_cols if 1 < df_valid[c].nunique() <= 50]
             
-            for cat_col in valid_cats[:5]:
+            for i, cat_col in enumerate(valid_cats):
                 nunique = df_valid[cat_col].nunique()
-                ctype = "pie" if nunique <= 6 else "bar"
+                if nunique <= 6:
+                    ctype = "pie" if i % 2 == 0 else "donut"
+                else:
+                    ctype = "bar"
+                    
                 counts = df_valid[cat_col].value_counts().reset_index().head(20)
+                if len(counts) == 0: continue
                 
                 top_cat = counts.iloc[0][cat_col]
                 if pd.isna(top_cat) or str(top_cat).strip() == '':
@@ -193,84 +188,138 @@ class VisualizationAgent:
                     "chart_type": ctype,
                     "x_axis_column": str(cat_col),
                     "y_axis_column": "count",
-                    "relevance_score": 85 if ctype == "pie" else 80,
-                    "chart_purpose": f"Top Categories in {cat_col}",
-                    "key_findings": f"Breakdown of frequencies within {cat_col}.",
-                    "business_meaning": f"'{top_cat_display}' is the dominant category, accounting for {top_pct:.1f}% of the top occurrences.",
+                    "relevance_score": 80,
+                    "chart_purpose": f"Distribution of {cat_col}",
+                    "key_findings": f"Breakdown of how often different categories appear in {cat_col}.",
+                    "business_meaning": f"'{top_cat_display}' is the dominant category, representing {top_pct:.1f}% of the occurrences.",
                     "data": data_points
                 })
                 
-            # 4. Time Series (Line) for all combinations of Date and top 3 Numeric
+            # 4. Time Series (Line / Area) for Date vs Numerical
             if len(date_cols) >= 1 and len(numerical_cols) >= 1:
-                xcol = date_cols[0] # Just use the first date column
-                
-                for ycol in numerical_cols[:3]:
-                    grouped = df_valid.groupby(pd.Grouper(key=xcol, freq='ME'))[ycol].mean().reset_index()
-                    if len(grouped) < 2:
-                        continue # Not enough data points over time
+                for xcol in date_cols:
+                    for i, ycol in enumerate(numerical_cols):
+                        grouped = df_valid.groupby(pd.Grouper(key=xcol, freq='ME'))[ycol].mean().reset_index()
+                        if len(grouped) < 2:
+                            continue
+                            
+                        first_val = grouped.iloc[0][ycol]
+                        last_val = grouped.iloc[-1][ycol]
+                        max_idx = grouped[ycol].idxmax()
+                        peak_date = grouped.iloc[max_idx][xcol]
                         
-                    first_val = grouped.iloc[0][ycol]
-                    last_val = grouped.iloc[-1][ycol]
-                    max_idx = grouped[ycol].idxmax()
-                    peak_date = grouped.iloc[max_idx][xcol]
-                    
-                    pct_change = 0
-                    if pd.notna(first_val) and first_val != 0:
-                        pct_change = ((last_val - first_val) / first_val) * 100
-                    
-                    direction = "increased" if pct_change > 0 else "decreased"
-                    
-                    data_points = []
-                    for _, row in grouped.iterrows():
-                        data_points.append({
-                            str(xcol): str(row[xcol].strftime('%Y-%m-%d')) if pd.notna(row[xcol]) else "Unknown",
-                            str(ycol): safe_float(row[ycol])
+                        pct_change = 0
+                        if pd.notna(first_val) and first_val != 0:
+                            pct_change = ((last_val - first_val) / first_val) * 100
+                        
+                        # Only show trend if variance is somewhat notable (e.g. > 5% change or high stdev)
+                        std_dev = grouped[ycol].std()
+                        mean_v = grouped[ycol].mean()
+                        cv = abs(std_dev / mean_v) if mean_v != 0 else 0
+                        
+                        if cv < 0.05 and abs(pct_change) < 5:
+                            continue # Ignore highly flat lines
+                        
+                        direction = "increased" if pct_change > 0 else "decreased"
+                        ctype = "area" if i % 2 == 0 else "line"
+                        
+                        data_points = []
+                        for _, row in grouped.iterrows():
+                            data_points.append({
+                                str(xcol): str(row[xcol].strftime('%Y-%m-%d')) if pd.notna(row[xcol]) else "Unknown",
+                                str(ycol): safe_float(row[ycol])
+                            })
+                            
+                        visualizations.append({
+                            "chart_type": ctype,
+                            "x_axis_column": str(xcol),
+                            "y_axis_column": str(ycol),
+                            "relevance_score": int(80 + min(20, cv * 50)),
+                            "chart_purpose": f"Trend of Average {ycol} over Time",
+                            "key_findings": f"Chronological tracking of how the average {ycol} changes.",
+                            "trend_summary": f"Over the recorded period, {ycol} has {direction} by {abs(pct_change):.1f}%, peaking on {peak_date.strftime('%Y-%m-%d') if pd.notna(peak_date) else 'Unknown'}.",
+                            "data": data_points
                         })
-                        
-                    visualizations.append({
-                        "chart_type": "line",
-                        "x_axis_column": str(xcol),
-                        "y_axis_column": str(ycol),
-                        "relevance_score": 92,
-                        "chart_purpose": f"Trend of Average {ycol} over Time",
-                        "key_findings": f"Time series analysis tracking {ycol}.",
-                        "trend_summary": f"Overall, {ycol} has {direction} by {abs(pct_change):.1f}%, peaking on {peak_date.strftime('%Y-%m-%d') if pd.notna(peak_date) else 'Unknown'}.",
-                        "data": data_points
-                    })
                 
-            # 5. Stacked Bar (Top 2 Categorical against each other)
+            # 5. Stacked Bar / Grouped Bar (Categorical vs Categorical cross-tabs)
             if len(valid_cats) >= 2:
-                xcol = valid_cats[0]
-                ycol = valid_cats[1]
-                
-                if df_valid[ycol].nunique() <= 10 and df_valid[xcol].nunique() <= 20:
-                    cross = pd.crosstab(df_valid[xcol], df_valid[ycol]).head(20)
-                    
-                    data_points = []
-                    for idx, row in cross.iterrows():
-                        point = {str(xcol): str(idx)}
-                        for c in cross.columns:
-                            point[str(c)] = safe_int(row[c])
-                        data_points.append(point)
+                for i in range(len(valid_cats)):
+                    for j in range(i+1, len(valid_cats)):
+                        xcol = valid_cats[i]
+                        ycol = valid_cats[j]
                         
-                    visualizations.append({
-                        "chart_type": "stacked_bar",
-                        "x_axis_column": str(xcol),
-                        "y_axis_column": str(ycol),
-                        "relevance_score": 82,
-                        "chart_purpose": f"{xcol} segmented by {ycol}",
-                        "key_findings": f"Stacked breakdown of {xcol} frequencies sub-categorized by {ycol}.",
-                        "business_meaning": f"Visualizes the interplay and distribution share between {xcol} and {ycol}.",
-                        "sub_categories": [str(c) for c in cross.columns],
-                        "data": data_points
-                    })
+                        # Only plot if number of categories is manageable for a grouped bar
+                        if df_valid[ycol].nunique() <= 10 and df_valid[xcol].nunique() <= 15:
+                            cross = pd.crosstab(df_valid[xcol], df_valid[ycol]).head(15)
+                            
+                            data_points = []
+                            for idx, row in cross.iterrows():
+                                point = {str(xcol): str(idx)}
+                                for c in cross.columns:
+                                    point[str(c)] = safe_int(row[c])
+                                data_points.append(point)
+                                
+                            ctype = "stacked_bar" if (i+j) % 2 == 0 else "grouped_bar"
+                            visualizations.append({
+                                "chart_type": ctype,
+                                "x_axis_column": str(xcol),
+                                "y_axis_column": str(ycol),
+                                "relevance_score": 75,
+                                "chart_purpose": f"{xcol} segmented by {ycol}",
+                                "key_findings": f"Breakdown of {xcol} frequencies sub-categorized by {ycol}.",
+                                "business_meaning": f"Visualizes the interplay and distribution share between {xcol} and {ycol}.",
+                                "sub_categories": [str(c) for c in cross.columns],
+                                "data": data_points
+                            })
+                        
+            # 6. Bar Charts (Categorical vs Numerical)
+            if len(valid_cats) >= 1 and len(numerical_cols) >= 1:
+                for xcol in valid_cats:
+                    if df_valid[xcol].nunique() > 20: continue # Skip if too many categories
+                    
+                    for ycol in numerical_cols:
+                        grouped = df_valid.groupby(xcol)[ycol].mean().reset_index().sort_values(by=ycol, ascending=False).head(20)
+                        if len(grouped) == 0: continue
+                        
+                        max_cat = grouped.iloc[0][xcol]
+                        max_val = grouped.iloc[0][ycol]
+                        
+                        data_points = []
+                        for _, row in grouped.iterrows():
+                            cat_val = row[xcol]
+                            display_val = "Empty/Missing" if pd.isna(cat_val) or str(cat_val).strip() == '' else str(cat_val)
+                            data_points.append({
+                                str(xcol): display_val,
+                                str(ycol): safe_float(row[ycol])
+                            })
+                            
+                        # Only include if variance between groups is notable
+                        cv = grouped[ycol].std() / grouped[ycol].mean() if grouped[ycol].mean() != 0 else 0
+                        if abs(cv) > 0.05:
+                            visualizations.append({
+                                "chart_type": "bar",
+                                "x_axis_column": str(xcol),
+                                "y_axis_column": str(ycol),
+                                "relevance_score": int(75 + min(25, abs(cv)*20)),
+                                "chart_purpose": f"Average {ycol} across {xcol}",
+                                "key_findings": f"Compares the average {ycol} value for different groups within {xcol}.",
+                                "business_meaning": f"The category '{max_cat}' leads with the highest average {ycol} ({safe_float(max_val):.2f}).",
+                                "data": data_points
+                            })
                 
         except Exception as e:
             logger.error(f"Error in offline heuristics: {str(e)}")
             visualizations.append({"error": f"Heuristic visualization engine failed: {str(e)}"})
             
-        # Sort by relevance to show the most interesting charts first
+        # Ensure highest scores stay within bound
+        for v in visualizations:
+            if 'relevance_score' in v:
+                v['relevance_score'] = min(100, v['relevance_score'])
+                
         visualizations = sorted(visualizations, key=lambda x: x.get('relevance_score', 0), reverse=True)
+        
+        # Apply performance cap
+        visualizations = visualizations[:MAX_VISUALIZATIONS]
         
         if not visualizations:
             visualizations.append({"error": "Failed to mathematically derive any meaningful relationships from the dataset."})

@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "D:\Major_Project\backend\app\api\routes.py", line 246, in get_table_data
-    "empty_cells": int(sum(df[col].map(is_empty_string).sum() for col in df.columns)),
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: unsupported operand type(s) for +: 'int' and 'str'

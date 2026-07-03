@@ -24,28 +24,49 @@ export default function TablePage() {
   const containerRef = useRef(null);
   const ROW_HEIGHT = 41; // px
 
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const limit = 100;
+
   useEffect(() => {
     if (!sessionId) return;
     
-    setLoading(true);
+    setPage(1);
+    setHasMore(true);
+    
     const delayDebounceFn = setTimeout(() => {
-      fetchData();
+      fetchData(true, 1);
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, dataset, search, sortCol, sortOrder]);
 
-  const fetchData = async () => {
+  const fetchData = async (reset = false, currentPage = page) => {
     try {
-      // limit=0 asks the backend to return ALL rows
+      if (reset) {
+        setLoading(true);
+      }
       const res = await axios.get(`${API_URL}/api/table/${sessionId}`, {
-        params: { dataset, page: 1, limit: 0, search, sort_col: sortCol, sort_order: sortOrder }
+        params: { dataset, page: currentPage, limit, search, sort_col: sortCol, sort_order: sortOrder }
       });
-      setColumns(res.data.columns);
-      setData(res.data.data);
+      
+      setColumns(res.data.columns.filter(c => c !== '_row_id'));
+      
+      if (reset) {
+        setData(res.data.data);
+      } else {
+        setData(prev => [...prev, ...res.data.data]);
+      }
+      
+      setHasMore(res.data.data.length === limit);
       setStats(res.data.stats);
-      setScrollTop(0); // reset scroll
-      if (containerRef.current) containerRef.current.scrollTop = 0;
+      
+      if (reset) {
+        setScrollTop(0);
+        if (containerRef.current) containerRef.current.scrollTop = 0;
+      }
+      
       setLoading(false);
     } catch (err) {
       console.error("Error fetching table data:", err);
@@ -65,6 +86,17 @@ export default function TablePage() {
 
   const handleScroll = (e) => {
     setScrollTop(e.target.scrollTop);
+    
+    if (!loading && hasMore) {
+      const bottom = e.target.scrollHeight - e.target.scrollTop - e.target.clientHeight < 200;
+      if (bottom) {
+        setPage(prev => {
+          const nextPage = prev + 1;
+          fetchData(false, nextPage);
+          return nextPage;
+        });
+      }
+    }
   };
 
   // Virtualization logic

@@ -9,3 +9,4 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings()
+# Added to trigger hot-reload for .env changes

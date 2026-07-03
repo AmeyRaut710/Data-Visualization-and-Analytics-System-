@@ -1,51 +1,58 @@
-import pandas as pd
+import polars as pl
 import io
 
 class DataIngestionService:
     @staticmethod
-    def parse_file(file_content: bytes, filename: str) -> pd.DataFrame:
-        # We explicitly omit the empty string ("") from the default NA values so that
-        # truly empty cells are preserved as empty strings rather than converted to NaN.
+    def parse_file(file_content: bytes, filename: str) -> pl.DataFrame:
         custom_na_values = [
             '#N/A', '#N/A N/A', '#NA', '-1.#IND', '-1.#QNAN', '-NaN', '-nan',
             '1.#IND', '1.#QNAN', '<NA>', 'N/A', 'NA', 'NULL', 'NaN', 'n/a', 'nan', 'null'
         ]
 
+        # Use infer_schema_length=0 to parse everything as string first.
+        # This is critical to distinguish Missing Values ("NaN") from Empty Cells ("").
         if filename.endswith(".csv"):
             try:
-                return pd.read_csv(io.BytesIO(file_content), keep_default_na=False, na_values=custom_na_values)
-            except UnicodeDecodeError:
-                return pd.read_csv(io.BytesIO(file_content), encoding='latin-1', keep_default_na=False, na_values=custom_na_values)
+                return pl.read_csv(file_content, infer_schema_length=0, ignore_errors=True)
             except Exception as e:
-                raise ValueError(f"CSV Parsing Error: {str(e)}")
+                try:
+                    return pl.read_csv(file_content, encoding='utf8-lossy', infer_schema_length=0)
+                except Exception as ex:
+                    raise ValueError(f"CSV Parsing Error: {str(ex)}")
         elif filename.endswith(".tsv"):
             try:
-                return pd.read_csv(io.BytesIO(file_content), sep="\t", keep_default_na=False, na_values=custom_na_values)
-            except UnicodeDecodeError:
-                return pd.read_csv(io.BytesIO(file_content), sep="\t", encoding='latin-1', keep_default_na=False, na_values=custom_na_values)
+                return pl.read_csv(file_content, separator="\t", infer_schema_length=0, ignore_errors=True)
+            except Exception as e:
+                try:
+                    return pl.read_csv(file_content, separator="\t", encoding='utf8-lossy', infer_schema_length=0)
+                except Exception as ex:
+                    raise ValueError(f"TSV Parsing Error: {str(ex)}")
         elif filename.endswith(".xlsx") or filename.endswith(".xls"):
             try:
-                return pd.read_excel(io.BytesIO(file_content), keep_default_na=False, na_values=custom_na_values)
-            except Exception as e:
-                raise ValueError(f"Excel Parsing Error: {str(e)}")
+                import pandas as pd
+                # Read all as string to preserve blank vs NaN
+                pdf = pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
+                return pl.from_pandas(pdf)
+            except Exception as ex:
+                raise ValueError(f"Excel Parsing Error: {str(ex)}")
         elif filename.endswith(".json"):
             try:
-                return pd.read_json(io.BytesIO(file_content))
+                return pl.read_json(io.BytesIO(file_content), infer_schema_length=0)
             except Exception as e:
                 raise ValueError(f"JSON Parsing Error: {str(e)}")
         else:
             raise ValueError("Unsupported file format")
 
     @staticmethod
-    def get_overview(df: pd.DataFrame, filename: str, file_size: int) -> dict:
+    def get_overview(df: pl.DataFrame, filename: str, file_size: int) -> dict:
         num_rows, num_columns = df.shape
-        columns = df.columns.tolist()
-        dtypes = {col: str(dtype) for col, dtype in df.dtypes.items()}
+        columns = df.columns
+        dtypes = {col: str(dtype) for col, dtype in zip(df.columns, df.dtypes)}
         
-        numerical_columns = df.select_dtypes(include=['int64', 'float64', 'int32', 'float32']).columns.tolist()
-        categorical_columns = df.select_dtypes(include=['object', 'category', 'string']).columns.tolist()
-        date_columns = df.select_dtypes(include=['datetime64', 'datetime64[ns]']).columns.tolist()
-        boolean_columns = df.select_dtypes(include=['bool']).columns.tolist()
+        numerical_columns = [col for col, dtype in zip(df.columns, df.dtypes) if dtype in [pl.Int64, pl.Float64, pl.Int32, pl.Float32]]
+        categorical_columns = [col for col, dtype in zip(df.columns, df.dtypes) if dtype in [pl.Utf8, pl.Categorical]]
+        date_columns = [col for col, dtype in zip(df.columns, df.dtypes) if dtype in [pl.Datetime, pl.Date]]
+        boolean_columns = [col for col, dtype in zip(df.columns, df.dtypes) if dtype == pl.Boolean]
 
         return {
             "filename": filename,
