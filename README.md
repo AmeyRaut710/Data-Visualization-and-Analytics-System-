@@ -12,9 +12,7 @@
 
 ## 🚀 Live Deployment
 
-- **Main Application:** [https://data-visualization-and-analytics-sy.vercel.app](https://data-visualization-and-analytics-sy.vercel.app)
-- **Alternate Link:** [https://data-visualization-and-analytics-system-5kqje197n.vercel.app](https://data-visualization-and-analytics-system-5kqje197n.vercel.app)
-
+- **Main Application:** [https://data-visualization-and-analytics-sy.vercel.app]([https://data-visualization-and-analytics-sy.vercel.app](https://data-visualization-and-analytics-sy.vercel.app?_vercel_share=uMirJgjmCM4ylqXlw5MGq6ttuKttB0vR))
 ---
 
 ## ✨ Features
