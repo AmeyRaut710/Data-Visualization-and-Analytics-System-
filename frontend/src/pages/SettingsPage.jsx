@@ -49,6 +49,13 @@ export default function SettingsPage() {
               Export to CSV
             </button>
             <button 
+              onClick={() => handleExport('excel')}
+              disabled={!sessionId}
+              className="bg-indigo-50 text-indigo-700 font-bold px-6 py-3 rounded-xl border border-indigo-200 hover:bg-indigo-100 disabled:opacity-50"
+            >
+              Export to Excel
+            </button>
+            <button 
               onClick={() => handleExport('html')}
               disabled={!sessionId}
               className="bg-indigo-50 text-indigo-700 font-bold px-6 py-3 rounded-xl border border-indigo-200 hover:bg-indigo-100 disabled:opacity-50"

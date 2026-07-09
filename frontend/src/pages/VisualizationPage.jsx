@@ -11,7 +11,26 @@ import { Activity, LayoutGrid, Info, Zap, Search, Filter } from 'lucide-react';
 const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-gc9m.onrender.com";
 
 
-const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
+const COLORS = [
+  '#2563eb', // Royal Blue
+  '#f97316', // Orange
+  '#10b981', // Emerald Green
+  '#d946ef', // Magenta
+  '#06b6d4', // Teal/Cyan
+  '#8b5cf6', // Violet
+  '#ef4444', // Red
+  '#eab308', // Yellow
+];
+
+const GRADIENTS = [
+  { stop1: '#3b82f6', stop2: '#60a5fa', border: '#2563eb' }, // Blue
+  { stop1: '#ea580c', stop2: '#f97316', border: '#ea580c' }, // Orange
+  { stop1: '#059669', stop2: '#10b981', border: '#059669' }, // Emerald Green
+  { stop1: '#d01c6a', stop2: '#ec4899', border: '#db2777' }, // Pink
+  { stop1: '#7c3aed', stop2: '#a78bfa', border: '#8b5cf6' }, // Violet
+  { stop1: '#0891b2', stop2: '#22d3ee', border: '#06b6d4' }, // Teal
+  { stop1: '#ca8a04', stop2: '#facc15', border: '#eab308' }, // Yellow
+];
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -148,13 +167,14 @@ export default function VisualizationPage() {
           
           const renderChart = () => {
             if (chart.chart_type === 'bar' || chart.chart_type === 'histogram') {
+              const grad = GRADIENTS[idx % GRADIENTS.length];
               return (
                 <ResponsiveContainer width="100%" height={320}>
                   <BarChart data={chart.data} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id={`colorBar${idx}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={1} />
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.8} />
+                        <stop offset="5%" stopColor={grad.stop1} stopOpacity={1} />
+                        <stop offset="95%" stopColor={grad.stop2} stopOpacity={0.8} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
@@ -207,20 +227,21 @@ export default function VisualizationPage() {
                 </ResponsiveContainer>
               );
             } else if (chart.chart_type === 'line') {
+              const grad = GRADIENTS[idx % GRADIENTS.length];
                return (
                 <ResponsiveContainer width="100%" height={320}>
                   <AreaChart data={chart.data} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id={`colorArea${idx}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        <stop offset="5%" stopColor={grad.stop1} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={grad.stop2} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
                     <XAxis dataKey={chart.x_axis_column} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} dy={10} />
                     <YAxis tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} dx={-10} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(1)}k` : val} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey={yCol} stroke="#10b981" strokeWidth={4} fillOpacity={1} fill={`url(#colorArea${idx})`} animationDuration={1500} />
+                    <Area type="monotone" dataKey={yCol} stroke={grad.border} strokeWidth={4} fillOpacity={1} fill={`url(#colorArea${idx})`} animationDuration={1500} />
                   </AreaChart>
                 </ResponsiveContainer>
               );

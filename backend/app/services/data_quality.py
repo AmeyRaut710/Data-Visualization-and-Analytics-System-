@@ -189,13 +189,13 @@ class DataQualityService:
                     if unique_count / total_rows > 0.9:
                         high_cardinality_cols.append(col)
                         
-            return constant_cols, high_cardinality_cols, extra_spaces_cols, special_chars_cols
-
+            return constant_cols, high_cardinality_cols, extra_spaces_cols, special_chars_cols, uniques
+        
         total_missing, total_empty, missing_per_col, empty_per_col, missing_pct_per_col, missing_severity = run_missing_empty()
         total_duplicates, row_duplicates_details, col_duplicates_details, columns_containing_duplicates, dup_count_by_col, dup_pct_by_col, total_business_duplicates, business_keys, total_near_duplicates, near_duplicates_details = run_duplicates()
         total_type_mismatches, type_validation_issues = run_type_validation()
         outliers_count, affected_columns, detailed_outliers = run_outliers()
-        constant_cols, high_cardinality_cols, extra_spaces_cols, special_chars_cols = run_string_anomalies()
+        constant_cols, high_cardinality_cols, extra_spaces_cols, special_chars_cols, uniques = run_string_anomalies()
         
         inconsistent_categories_cols = []
         if masks_cache and "inconsistent_cat_indices" in masks_cache:
@@ -234,6 +234,50 @@ class DataQualityService:
             elif score >= 50: imp = "Medium"
             else: imp = "Low"
             column_importance[col] = imp
+
+        missing_data_heatmap = []
+        poor_quality_rows_count = 0
+        try:
+            import numpy as np
+            import math
+            sample_size = min(100, total_rows)
+            if total_rows > sample_size:
+                indices = [int(i) for i in np.linspace(0, total_rows - 1, sample_size)]
+                sample_df = df[indices]
+            else:
+                sample_df = df
+
+            for i, row in enumerate(sample_df.iter_rows(named=True)):
+                row_data = {"_row_id": i + 1}
+                for col_name, val in row.items():
+                    is_missing = 0
+                    if val is None:
+                        is_missing = 1
+                    elif isinstance(val, float) and math.isnan(val):
+                        is_missing = 1
+                    elif isinstance(val, str) and str(val).strip() == "":
+                        is_missing = 1
+                    row_data[col_name] = is_missing
+                missing_data_heatmap.append(row_data)
+
+            null_exprs = []
+            for col in df.columns:
+                dtype = df.schema[col]
+                if dtype in [pl.Utf8, pl.Categorical]:
+                    null_exprs.append((pl.col(col).is_null()) | (pl.col(col).str.strip_chars() == ""))
+                elif dtype in [pl.Float32, pl.Float64]:
+                    null_exprs.append((pl.col(col).is_null()) | (pl.col(col).is_nan()))
+                else:
+                    null_exprs.append(pl.col(col).is_null())
+                    
+            if null_exprs:
+                poor_quality_rows_count = df.select(
+                    pl.sum_horizontal(null_exprs).alias("missing_count")
+                ).filter(
+                    pl.col("missing_count") > (total_cols / 2)
+                ).height
+        except Exception as e:
+            print(f"Error generating Missing Data Heatmap for dashboard: {e}")
 
         return {
             "metrics": {
@@ -276,7 +320,8 @@ class DataQualityService:
                 "empty_per_column": empty_per_col,
                 "duplicate_count_by_col": dup_count_by_col,
                 "duplicate_pct_by_col": dup_pct_by_col,
-                "column_importance": column_importance
+                "column_importance": column_importance,
+                "unique_counts_by_col": uniques
             },
             "anomalies": {
                 "row_duplicates_details": row_duplicates_details,
@@ -296,7 +341,7 @@ class DataQualityService:
                 "high_null_cols": high_null_cols,
                 "detailed_outliers": detailed_outliers,
                 "high_empty_cols": high_empty_cols,
-                "poor_quality_rows_count": 0,
-                "missing_data_heatmap": []
+                "poor_quality_rows_count": poor_quality_rows_count,
+                "missing_data_heatmap": missing_data_heatmap
             }
         }

@@ -435,19 +435,19 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
           <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 overflow-hidden flex flex-col">
              <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white">
-               <FileText className="w-5 h-5 text-indigo-400" /> Column-wise Empty Cells
+               <FileText className="w-5 h-5 text-indigo-400" /> Column-wise Missing Data
              </h3>
              <div className="overflow-auto flex-1 max-h-[300px]">
                <table className="w-full text-sm text-left">
                  <thead className="bg-slate-900/50 text-xs text-slate-400 uppercase sticky top-0 border-b border-slate-700 z-10">
                    <tr>
                      <th className="px-4 py-3">Column</th>
-                     <th className="px-4 py-3 text-right">Empty Count</th>
-                     <th className="px-4 py-3 text-right">Empty %</th>
+                     <th className="px-4 py-3 text-right">Missing Count</th>
+                     <th className="px-4 py-3 text-right">Missing %</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-700/50">
-                   {distributions?.empty_per_column && Object.entries(distributions.empty_per_column).sort((a,b) => b[1] - a[1]).map(([col, count]) => {
+                   {distributions?.all_missing_per_column && Object.entries(distributions.all_missing_per_column).sort((a,b) => b[1] - a[1]).map(([col, count]) => {
                      const pct = distributions?.missing_pct_per_column?.[col] || 0;
                      if (count === 0 && pct === 0) return null;
                      return (
@@ -464,8 +464,8 @@ export default function DashboardPage() {
                    })}
                  </tbody>
                </table>
-               {(!distributions?.empty_per_column || Object.values(distributions.empty_per_column).every(v => v === 0)) && (
-                 <p className="text-sm text-slate-400 text-center py-10">No empty cells found in any column.</p>
+               {(!distributions?.all_missing_per_column || Object.values(distributions.all_missing_per_column).every(v => v === 0)) && (
+                 <p className="text-sm text-slate-400 text-center py-10">No missing data found in any column.</p>
                )}
              </div>
           </div>

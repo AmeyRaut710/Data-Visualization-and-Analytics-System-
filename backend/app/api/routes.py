@@ -119,22 +119,48 @@ async def preview_cleaning(session_id: str, request: TargetedCleanRequest):
     df = get_df_from_session(session_id)
     try:
         from app.services.data_cleaning import DataCleaningService
-        cleaned_df = DataCleaningService.apply_targeted_cleaning(df, request.issue, request.columns, request.method, request.custom_value)
+        cache = active_sessions[session_id].get("metadata_cache") if session_id in active_sessions and isinstance(active_sessions[session_id], dict) else None
+        cleaned_df = DataCleaningService.apply_targeted_cleaning(df, request.issue, request.columns, request.method, request.custom_value, cache)
         
+        dropped_cols = [c for c in df.columns if c not in cleaned_df.columns]
+        
+        original_preview = []
+        cleaned_preview = []
+        rows_removed = 0
         values_changed = 0
-        if df.height != cleaned_df.height:
+        
+        if dropped_cols:
+            original_preview = df.head(5).to_dicts()
+            cleaned_preview = cleaned_df.head(5).to_dicts()
+            values_changed = df.height * len(dropped_cols)
+        elif cleaned_df.height < df.height:
             rows_removed = df.height - cleaned_df.height
-            try:
-                dropped = df.join(cleaned_df, on=df.columns, how="anti").head(5)
-                original_preview = dropped.to_dicts()
-                cleaned_preview = []
-            except:
-                original_preview = df.head(5).to_dicts()
-                cleaned_preview = cleaned_df.head(5).to_dicts()
+            # Identify dropped rows by comparing occurrences
+            common_cols = [c for c in df.columns if c in cleaned_df.columns]
+            df_counts = df.group_by(common_cols).len(name="count_orig")
+            clean_counts = cleaned_df.group_by(common_cols).len(name="count_clean")
+            joined = df_counts.join(clean_counts, on=common_cols, how="left").with_columns(
+                pl.col("count_clean").fill_null(0)
+            )
+            dropped_groups = joined.filter(pl.col("count_orig") > pl.col("count_clean"))
+            
+            dropped_rows = []
+            for row in dropped_groups.iter_rows(named=True):
+                num_dropped = row["count_orig"] - row["count_clean"]
+                row_data = {k: v for k, v in row.items() if k not in ["count_orig", "count_clean"]}
+                for _ in range(num_dropped):
+                    dropped_rows.append(row_data)
+                    if len(dropped_rows) >= 5:
+                        break
+                if len(dropped_rows) >= 5:
+                    break
+            
+            original_preview = dropped_rows[:5]
+            cleaned_preview = [{"__removed__": True} for _ in original_preview]
         else:
-            rows_removed = 0
             diff_mask = pl.Series([False] * df.height)
-            for col in df.columns:
+            common_cols = [c for c in df.columns if c in cleaned_df.columns]
+            for col in common_cols:
                 s1 = df.get_column(col)
                 s2 = cleaned_df.get_column(col)
                 null_diff = s1.is_null() != s2.is_null()
@@ -145,7 +171,7 @@ async def preview_cleaning(session_id: str, request: TargetedCleanRequest):
                 col_diff = null_diff | val_diff
                 diff_mask = diff_mask | col_diff
                 
-            values_changed = diff_mask.sum()
+            values_changed = int(diff_mask.sum())
             changed_orig = df.filter(diff_mask).head(5)
             changed_new = cleaned_df.filter(diff_mask).head(5)
             
@@ -176,6 +202,8 @@ async def preview_cleaning(session_id: str, request: TargetedCleanRequest):
             }
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/clean/{session_id}/apply")
@@ -334,6 +362,85 @@ async def export_csv(session_id: str):
     from fastapi.responses import Response
     csv_bytes = df.write_csv()
     return Response(content=csv_bytes, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=dataset_{session_id}.csv"})
+
+@router.get("/export/{session_id}/excel")
+async def export_excel(session_id: str, theme: str = "blue"):
+    df = get_df_from_session(session_id)
+    import io
+    from fastapi.responses import StreamingResponse
+    import pandas as pd
+    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Alignment
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    
+    # Convert Polars DataFrame to Pandas DataFrame
+    pdf = df.to_pandas()
+    
+    # Write to Excel in memory using openpyxl
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pdf.to_excel(writer, index=False, sheet_name="Cleaned_Data")
+        
+        # Get worksheet and auto-fit row/column sizing
+        worksheet = writer.sheets["Cleaned_Data"]
+        max_row = worksheet.max_row
+        max_col = worksheet.max_column
+        max_col_letter = get_column_letter(max_col)
+        
+        # Map frontend theme name to Excel's native Table Style name
+        THEME_MAP = {
+            "blue": "TableStyleMedium2",
+            "green": "TableStyleMedium3",
+            "charcoal": "TableStyleMedium1",
+            "amber": "TableStyleMedium5",
+            "teal": "TableStyleMedium6",
+            "purple": "TableStyleMedium4",
+            "red": "TableStyleMedium7",
+            "gold": "TableStyleMedium13"
+        }
+        excel_style_name = THEME_MAP.get(theme.lower(), "TableStyleMedium2")
+        
+        # Add Excel Native Table Object (Formated Table)
+        # Using a native table allows Excel to handle borders, headers, and zebra striping natively,
+        # which is 100x faster than cell-by-cell looping in Python and lets the user edit themes in Excel.
+        tab = Table(displayName="CleanedData", ref=f"A1:{max_col_letter}{max_row}")
+        style = TableStyleInfo(
+            name=excel_style_name, 
+            showFirstColumn=False,
+            showLastColumn=False, 
+            showRowStripes=True, 
+            showColumnStripes=False
+        )
+        tab.tableStyleInfo = style
+        worksheet.add_table(tab)
+        
+        # Auto-adjust column widths based on maximum contents length (sampling first 100 rows for speed)
+        sample_rows = min(max_row, 100)
+        for col_idx in range(1, max_col + 1):
+            max_len = 0
+            for row_idx in range(1, sample_rows + 1):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                val = str(cell.value or '')
+                if len(val) > max_len:
+                    max_len = len(val)
+            col_letter = get_column_letter(col_idx)
+            worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
+            
+        # Format headers for visual alignment
+        align_header = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        for col_idx in range(1, max_col + 1):
+            worksheet.cell(row=1, column=col_idx).alignment = align_header
+        
+    output.seek(0)
+    
+    headers = {
+        "Content-Disposition": f"attachment; filename=cleaned_dataset_{session_id}.xlsx"
+    }
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers
+    )
 
 @router.get("/table/{session_id}")
 async def get_table_data(
