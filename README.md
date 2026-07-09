@@ -1,62 +1,446 @@
-# 📊 AI Data Visualization System
+# 📊 AI Data Visualization & Analytics System
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen.svg)]([https://data-visualization-and-analytics-system-5kqje197n.vercel.app](https://data-visualization-and-analytics-sy.vercel.app?_vercel_share=7QZUgHThhXHJGmK4E4P7gwIusZnzqNHT))
-[![React](https://img.shields.io/badge/Frontend-React%20%7C%20Vite-blue.svg)](https://reactjs.org/)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+<p align="center">
 
-**AI Data Visualization System** is an Agentic AI-powered Data Visualization and Analytics Platform. 
+![React](https://img.shields.io/badge/Frontend-React%20%7C%20Vite-61DAFB?logo=react&logoColor=white)
+![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
+![MongoDB](https://img.shields.io/badge/Database-MongoDB-47A248?logo=mongodb&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Active-success)
 
-🔒 **Privacy First:** Uploaded CSV, XLS, XLSX, and TSV files are strictly processed **in-memory (RAM)** and are **never saved to a database or disk permanently**.
+</p>
 
----
-
-## 🚀 Live Deployment
-
-- **Main Application:** [https://data-visualization-and-analytics-sy.vercel.app]([https://data-visualization-and-analytics-sy.vercel.app](https://data-visualization-and-analytics-sy.vercel.app?_vercel_share=uMirJgjmCM4ylqXlw5MGq6ttuKttB0vR))
----
-
-## ✨ Features
-
-- **Data Profiling:** Automatic metadata inference to understand dataset structures instantly.
-- **Data Quality Assessment:** Robust detection for missing values, duplicates, and outliers (using IQR, Z-Score, and Isolation Forest algorithms).
-- **Data Cleaning Agent:** Interactive filling, dropping, and type casting functionality powered by AI.
-- **Visualization Agent:** Auto-generated interactive charts using Plotly and Recharts.
-- **AI Insights & Chat Assistant:** Ask questions about your data! Powered by LangGraph and Google Gemini.
-- **Export System:** Export cleaned datasets as CSV or generate comprehensive HTML reports.
+<p align="center">
+An <b>Agentic AI-powered Data Visualization and Analytics Platform</b> that automatically profiles, cleans, analyzes, visualizes, and explains datasets using intelligent AI agents.
+</p>
 
 ---
 
-## 🏗 Architecture
+# 🚀 Live Demo
 
-The platform follows a modern decoupled architecture:
+### 🌐 **Project URL**
 
-- **Frontend:** React + Vite + TailwindCSS + Plotly.js
-- **Backend:** FastAPI + Pandas + LangChain + Scikit-Learn
-- **Database:** MongoDB *(Note: Used strictly for user preferences and system logs. No datasets are stored!)*
+**https://data-visualization-and-analytics-sy.vercel.app/**
 
 ---
 
-## 💻 Setup Instructions
+# 📖 Overview
 
-To run the application locally, follow these steps:
+AI Data Visualization & Analytics System is a modern web-based platform designed to simplify data analysis for students, researchers, analysts, and businesses.
 
-1. **Environment Configuration:**
-   Rename `.env.example` to `backend/.env` and add your Gemini API Key:
-   ```env
-   GEMINI_API_KEY="your-api-key-here"
-   ```
+Instead of manually cleaning datasets and creating visualizations, users simply upload a dataset and let AI agents perform:
 
-2. **Run the Application:**
-   Choose one of the following methods to start both frontend and backend:
-   
-   - **Using Docker:**
-     ```bash
-     docker-compose up --build
-     ```
-   
-   - **Using Batch Script (Windows):**
-     Double-click `run_project.bat` from your file explorer.
+- Data Profiling
+- Data Quality Analysis
+- Intelligent Data Cleaning
+- Automatic Visualization
+- AI-Powered Insights
+- Interactive Chat with Dataset
+- Report Generation
+
+The system processes uploaded datasets entirely **in memory (RAM)** to ensure maximum privacy.
 
 ---
 
-*Built with ❤️ for Data Analysts & Engineers.*
+# 🔒 Privacy First
+
+✅ CSV, XLS, XLSX and TSV files are processed **only in RAM**
+
+✅ Uploaded datasets are **never permanently stored**
+
+✅ No database is used to save user datasets
+
+✅ MongoDB stores only:
+
+- User preferences
+- System logs
+- Chat history (optional)
+
+---
+
+# ✨ Features
+
+## 📊 Data Profiling Agent
+
+Automatically detects:
+
+- Dataset dimensions
+- Column names
+- Data types
+- Numerical & categorical columns
+- Memory usage
+- Summary statistics
+
+---
+
+## 🧹 Data Quality Agent
+
+Detects:
+
+- Missing values
+- Duplicate rows
+- Empty cells
+- Invalid values
+- Outliers
+
+Supports multiple algorithms:
+
+- IQR
+- Z-Score
+- Isolation Forest
+
+---
+
+## 🤖 AI Data Cleaning Agent
+
+Provides intelligent cleaning operations:
+
+- Fill Missing Values
+- Drop Missing Values
+- Remove Duplicates
+- Handle Outliers
+- Change Data Types
+- Rename Columns
+- Delete Columns
+
+---
+
+## 📈 Visualization Agent
+
+Automatically recommends and generates interactive charts.
+
+Supported visualizations include:
+
+- Bar Chart
+- Line Chart
+- Scatter Plot
+- Pie Chart
+- Histogram
+- Box Plot
+- Heatmap
+- Correlation Matrix
+- Count Plot
+- Distribution Plot
+
+Built using:
+
+- Plotly
+- Recharts
+
+---
+
+## 💬 AI Chat Assistant
+
+Powered by:
+
+- LangGraph
+- LangChain
+- Google Gemini
+
+Capabilities:
+
+- Ask questions about datasets
+- Explain trends
+- Summarize statistics
+- Generate insights
+- Recommend visualizations
+
+---
+
+## 📄 Report Generation
+
+Export:
+
+- Cleaned CSV
+- HTML Reports
+
+Includes:
+
+- Dataset Summary
+- Quality Report
+- Charts
+- AI Insights
+
+---
+
+# 🏗️ System Architecture
+
+```
+                User Uploads Dataset
+                        │
+                        ▼
+              Data Profiling Agent
+                        │
+                        ▼
+             Data Quality Assessment
+                        │
+                        ▼
+              AI Cleaning Agent
+                        │
+                        ▼
+            Visualization Generator
+                        │
+                        ▼
+            AI Chat & Insights Agent
+                        │
+                        ▼
+               Export Reports / CSV
+```
+
+---
+
+# 🛠 Tech Stack
+
+## Frontend
+
+- React
+- Vite
+- Tailwind CSS
+- Plotly.js
+- Recharts
+- Axios
+
+---
+
+## Backend
+
+- FastAPI
+- Pandas
+- NumPy
+- Scikit-learn
+- LangChain
+- LangGraph
+- Google Gemini API
+
+---
+
+## Database
+
+MongoDB
+
+Used only for:
+
+- User Preferences
+- System Logs
+- Session Management
+
+> **Datasets are never stored.**
+
+---
+
+# 📂 Project Structure
+
+```
+AI-Data-Visualization-System
+│
+├── backend
+│   ├── app
+│   ├── services
+│   ├── agents
+│   ├── models
+│   ├── utils
+│   └── main.py
+│
+├── frontend
+│   ├── src
+│   ├── pages
+│   ├── components
+│   ├── hooks
+│   └── assets
+│
+├── docker-compose.yml
+├── run_project.bat
+├── README.md
+└── requirements.txt
+```
+
+---
+
+# ⚙️ Installation
+
+## 1. Clone Repository
+
+```bash
+git clone https://github.com/yourusername/AI-Data-Visualization-System.git
+
+cd AI-Data-Visualization-System
+```
+
+---
+
+## 2. Configure Environment
+
+Create:
+
+```
+backend/.env
+```
+
+Add:
+
+```env
+GEMINI_API_KEY=YOUR_API_KEY
+```
+
+---
+
+## 3. Install Dependencies
+
+### Backend
+
+```bash
+cd backend
+
+pip install -r requirements.txt
+```
+
+### Frontend
+
+```bash
+cd frontend
+
+npm install
+```
+
+---
+
+## 4. Run Project
+
+### Option 1 — Docker
+
+```bash
+docker-compose up --build
+```
+
+---
+
+### Option 2 — Windows
+
+Double-click:
+
+```
+run_project.bat
+```
+
+---
+
+### Option 3 — Manual
+
+Backend
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Frontend
+
+```bash
+npm run dev
+```
+
+---
+
+# 📊 Supported File Formats
+
+- CSV
+- XLS
+- XLSX
+- TSV
+
+---
+
+# 🚀 Future Enhancements
+
+- PDF Report Export
+- Dashboard Sharing
+- Role-based Authentication
+- Multi-file Analysis
+- Real-time Collaboration
+- AutoML Integration
+- SQL Dataset Support
+- Cloud Storage Connectors
+- Explainable AI (SHAP/LIME)
+- Multi-Agent Workflow Expansion
+
+---
+
+# 📸 Screenshots
+
+> Add screenshots of:
+
+- Home Page
+- Upload Page
+- Data Profiling
+- Data Cleaning
+- Dashboard
+- AI Chat
+- Report Generation
+
+Example:
+
+```
+/screenshots/home.png
+/screenshots/dashboard.png
+/screenshots/chat.png
+```
+
+---
+
+# 🤝 Contributing
+
+Contributions are welcome!
+
+1. Fork the repository
+
+2. Create a feature branch
+
+```bash
+git checkout -b feature-name
+```
+
+3. Commit changes
+
+```bash
+git commit -m "Added new feature"
+```
+
+4. Push
+
+```bash
+git push origin feature-name
+```
+
+5. Create a Pull Request
+
+---
+
+# 📜 License
+
+This project is licensed under the MIT License.
+
+---
+
+# 👨‍💻 Developer
+
+**Amey Raut**
+
+B.Tech Computer Science & Engineering
+
+Data Analytics | AI | Machine Learning | Full Stack Development
+
+---
+
+# ⭐ Support
+
+If you found this project useful, please consider giving it a ⭐ on GitHub.
+
+It helps others discover the project and motivates further development.
+
+---
+
+<p align="center">
+
+<b>Built with ❤️ using React, FastAPI, LangGraph, Google Gemini, and AI Agents.</b>
+
+</p>
