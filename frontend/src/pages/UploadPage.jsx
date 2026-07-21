@@ -11,7 +11,7 @@ export default function UploadPage() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { saveSession, setOverview } = useAppContext();
+  const { saveSession, setOverview, setAiDashboardData, setSheets, setActiveSheet, setAllOverviews } = useAppContext();
   const navigate = useNavigate();
 
   const handleUpload = async (e) => {
@@ -27,7 +27,15 @@ export default function UploadPage() {
     try {
       const res = await axios.post(`${API_URL}/api/upload`, formData);
       saveSession(res.data.session_id);
+      
+      if (res.data.sheets && res.data.sheets.length > 0) {
+        setSheets(res.data.sheets);
+        setActiveSheet(res.data.sheets[0]);
+        setAllOverviews(res.data.all_overviews || {});
+      }
+      
       setOverview(res.data.overview);
+      if (setAiDashboardData) setAiDashboardData(null);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to upload file.');

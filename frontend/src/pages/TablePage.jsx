@@ -8,7 +8,7 @@ const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-
 
 
 export default function TablePage() {
-  const { sessionId } = useAppContext();
+  const { sessionId, activeSheet } = useAppContext();
   const [data, setData] = useState([]);
   const [columns, setColumns] = useState([]);
   const [stats, setStats] = useState(null);
@@ -40,7 +40,7 @@ export default function TablePage() {
 
     return () => clearTimeout(delayDebounceFn);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, dataset, search, sortCol, sortOrder]);
+  }, [sessionId, dataset, search, sortCol, sortOrder, activeSheet]);
 
   const fetchData = async (reset = false, currentPage = page) => {
     try {
@@ -48,7 +48,7 @@ export default function TablePage() {
         setLoading(true);
       }
       const res = await axios.get(`${API_URL}/api/table/${sessionId}`, {
-        params: { dataset, page: currentPage, limit, search, sort_col: sortCol, sort_order: sortOrder }
+        params: { dataset, page: currentPage, limit, search, sort_col: sortCol, sort_order: sortOrder, sheet: activeSheet }
       });
       
       setColumns(res.data.columns.filter(c => c !== '_row_id'));

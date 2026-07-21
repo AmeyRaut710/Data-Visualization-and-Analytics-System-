@@ -25,8 +25,10 @@ from fastapi.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 from app.api.routes import router as api_router
+from app.api.dashboard import router as dashboard_router
 
 app.include_router(api_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api/dashboard")
 
 @app.get("/")
 def read_root():

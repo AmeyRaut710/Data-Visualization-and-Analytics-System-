@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowLeft, Search, Filter, Download, Save, RefreshCw, X, Check, Eye, Trash2, BrainCircuit, ArrowUpDown, ArrowUp, ArrowDown, Eraser, AlertTriangle, Undo2, Redo2, History, Loader2, Copy, BoxSelect, TrendingUp, CheckCircle2, Maximize2, Minimize2 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
@@ -8,7 +8,8 @@ const API_URL = import.meta.env.VITE_API_URL || "https://data-analytics-backend-
 
 
 export default function WorkspacePage() {
-  const { sessionId } = useAppContext();
+  const { sessionId, hasCleanedDataset, setHasCleanedDataset, setHasGeneratedDashboard, overview, showToast } = useAppContext();
+  const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [columns, setColumns] = useState([]);
   const [stats, setStats] = useState(null);
@@ -77,6 +78,11 @@ export default function WorkspacePage() {
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [selectedColumns, setSelectedColumns] = useState(new Set());
 
+  // Dashboard Generation Loading state
+  const [isGeneratingDashboard, setIsGeneratingDashboard] = useState(false);
+  const [dashboardProgress, setDashboardProgress] = useState(0);
+  const [dashboardStepText, setDashboardStepText] = useState("");
+
   // Checkbox toggle functions
   const toggleRow = (rowId) => {
     const newSet = new Set(selectedRows);
@@ -128,6 +134,7 @@ export default function WorkspacePage() {
       setPage(1);
       await fetchData(true, 1);
       await fetchHistory();
+      setHasCleanedDataset(true);
       setIsProcessing(false);
     } catch (error) {
       console.error("Failed to bulk remove", error);
@@ -191,9 +198,48 @@ export default function WorkspacePage() {
       fetchData(true, 1);
       fetchHistory();
     }, 300);
+    
+    // Check initial cleanliness
+    if (overview && overview.cleanliness_score === 100) {
+       setHasCleanedDataset(true);
+    }
+
     return () => clearTimeout(delayDebounceFn);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, search, sortCol, sortOrder, viewMode]);
+
+  const handleGenerateDashboard = () => {
+    setIsGeneratingDashboard(true);
+    setDashboardProgress(10);
+    setDashboardStepText("Analyzing columns...");
+
+    setTimeout(() => {
+      setDashboardProgress(30);
+      setDashboardStepText("Generating KPIs...");
+      
+      setTimeout(() => {
+        setDashboardProgress(60);
+        setDashboardStepText("Selecting visualizations...");
+        
+        setTimeout(() => {
+          setDashboardProgress(85);
+          setDashboardStepText("Creating insights...");
+          
+          setTimeout(() => {
+            setDashboardProgress(100);
+            setDashboardStepText("Preparing dashboard...");
+            
+            setTimeout(() => {
+              setHasGeneratedDashboard(true);
+              setIsGeneratingDashboard(false);
+              showToast("AI Dashboard generated successfully.", "success");
+              navigate('/powerbi-dashboard');
+            }, 500);
+          }, 400);
+        }, 500);
+      }, 500);
+    }, 500);
+  };
 
   const handleUndo = async () => {
     try {
@@ -204,6 +250,7 @@ export default function WorkspacePage() {
       setPage(1);
       await fetchData(true, 1);
       await fetchHistory();
+      setHasCleanedDataset(true);
       setIsProcessing(false);
     } catch (err) {
       alert(err.response?.data?.detail || "Nothing to undo or error occurred.");
@@ -220,6 +267,7 @@ export default function WorkspacePage() {
       setPage(1);
       await fetchData(true, 1);
       await fetchHistory();
+      setHasCleanedDataset(true);
       setIsProcessing(false);
     } catch (err) {
       alert(err.response?.data?.detail || "Nothing to redo or error occurred.");
@@ -275,6 +323,7 @@ export default function WorkspacePage() {
       setPage(1);
       await fetchData(true, 1);
       await fetchHistory();
+      setHasCleanedDataset(true);
       setIsProcessing(false);
     } catch (error) {
       console.error("Failed to remove", error);
@@ -303,6 +352,28 @@ export default function WorkspacePage() {
             <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
             <h3 className="text-xl font-bold text-slate-800">{processMessage}</h3>
             <p className="text-sm text-slate-500">Please wait while the engine processes the dataset...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Dashboard Generation Overlay */}
+      {isGeneratingDashboard && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-6 animate-in zoom-in-95 duration-300 w-96 max-w-full text-center">
+            <div className="text-4xl">🤖</div>
+            <h3 className="text-xl font-bold text-slate-800">AI is building your dashboard...</h3>
+            
+            <div className="w-full bg-slate-100 rounded-full h-3 mb-2 overflow-hidden shadow-inner">
+              <div 
+                className="bg-gradient-to-r from-indigo-500 to-purple-600 h-3 rounded-full transition-all duration-300 ease-out" 
+                style={{ width: `${dashboardProgress}%` }}
+              ></div>
+            </div>
+            
+            <div className="flex justify-between w-full text-sm font-bold text-slate-500">
+              <span className="animate-pulse">{dashboardStepText}</span>
+              <span>{dashboardProgress}%</span>
+            </div>
           </div>
         </div>
       )}
@@ -370,6 +441,12 @@ export default function WorkspacePage() {
             >
               <History className="w-4 h-4" /> History
               <span className="bg-indigo-100 text-indigo-700 text-xs px-1.5 py-0.5 rounded-md ml-1">{historyPointer}/{Math.max(0, historyLogs.length - 1)}</span>
+            </button>
+            <button 
+              onClick={handleGenerateDashboard}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all border shadow-sm bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-transparent"
+            >
+              <span className="text-lg leading-none">📊</span> Generate AI Dashboard
             </button>
 
             <button 

@@ -53,7 +53,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function VisualizationPage() {
-  const { sessionId } = useAppContext();
+  const { sessionId, activeSheet } = useAppContext();
   const [charts, setCharts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('All');
@@ -61,7 +61,9 @@ export default function VisualizationPage() {
 
   useEffect(() => {
     if (sessionId) {
-      axios.get(`${API_URL}/api/visualizations/${sessionId}`)
+      setLoading(true);
+      const sheetParam = activeSheet ? `?sheet=${encodeURIComponent(activeSheet)}` : '';
+      axios.get(`${API_URL}/api/visualizations/${sessionId}${sheetParam}`)
         .then(res => {
           setCharts(res.data.visualizations || []);
           setLoading(false);
@@ -71,7 +73,7 @@ export default function VisualizationPage() {
           setLoading(false);
         });
     }
-  }, [sessionId]);
+  }, [sessionId, activeSheet]);
 
   if (!sessionId) return <Navigate to="/" />;
 
@@ -85,6 +87,24 @@ export default function VisualizationPage() {
       <p className="text-slate-500 mt-2 font-medium">Analyzing multidimensional arrays to construct optimal geometric mappings.</p>
     </div>
   );
+
+  const availableChartTypes = [...new Set(charts.map(chart => chart.chart_type?.toLowerCase()).filter(Boolean))];
+
+  const formatChartTypeLabel = (type) => {
+    const labels = {
+      bar: 'Bar Chart',
+      stacked_bar: 'Stacked Bar',
+      grouped_bar: 'Grouped Bar',
+      line: 'Line / Trend',
+      area: 'Area Chart',
+      scatter: 'Scatter Plot',
+      pie: 'Pie Chart',
+      donut: 'Donut Chart',
+      heatmap: 'Heatmap',
+      histogram: 'Histogram'
+    };
+    return labels[type] || type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
 
   return (
     <div className="p-4 md:p-10 max-w-7xl mx-auto space-y-8">
@@ -127,15 +147,9 @@ export default function VisualizationPage() {
             className="w-full pl-12 pr-10 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700 shadow-sm appearance-none cursor-pointer"
           >
             <option value="All">All Chart Types</option>
-            <option value="bar">Bar Chart</option>
-            <option value="stacked_bar">Stacked Bar</option>
-            <option value="grouped_bar">Grouped Bar</option>
-            <option value="line">Line / Trend</option>
-            <option value="area">Area Chart</option>
-            <option value="scatter">Scatter Plot</option>
-            <option value="pie">Pie / Donut</option>
-            <option value="heatmap">Heatmap</option>
-            <option value="histogram">Histogram</option>
+            {availableChartTypes.map(type => (
+              <option key={type} value={type}>{formatChartTypeLabel(type)}</option>
+            ))}
           </select>
         </div>
       </div>

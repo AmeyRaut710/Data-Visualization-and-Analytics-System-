@@ -8,6 +8,20 @@ const AppContext = createContext();
 export function AppProvider({ children }) {
   const [sessionId, setSessionId] = useState(() => sessionStorage.getItem('sessionId') || null);
   const [overview, setOverview] = useState(null);
+  const [sheets, setSheets] = useState([]);
+  const [activeSheet, setActiveSheet] = useState(null);
+  const [allOverviews, setAllOverviews] = useState({});
+  const [aiDashboardData, setAiDashboardData] = useState(null);
+  const [toast, setToast] = useState(null);
+  
+  // Dashboard generation state
+  const [hasCleanedDataset, setHasCleanedDataset] = useState(false);
+  const [hasGeneratedDashboard, setHasGeneratedDashboard] = useState(false);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const saveSession = (id) => {
     setSessionId(id);
@@ -20,6 +34,12 @@ export function AppProvider({ children }) {
     }
     setSessionId(null);
     setOverview(null);
+    setSheets([]);
+    setActiveSheet(null);
+    setAllOverviews({});
+    setAiDashboardData(null);
+    setHasCleanedDataset(false);
+    setHasGeneratedDashboard(false);
     sessionStorage.removeItem('sessionId');
   };
 
@@ -37,7 +57,17 @@ export function AppProvider({ children }) {
   }, [sessionId]);
 
   return (
-    <AppContext.Provider value={{ sessionId, saveSession, clearSession, overview, setOverview }}>
+    <AppContext.Provider value={{ 
+        sessionId, saveSession, clearSession, 
+        overview, setOverview, 
+        sheets, setSheets,
+        activeSheet, setActiveSheet,
+        allOverviews, setAllOverviews,
+        aiDashboardData, setAiDashboardData,
+        hasCleanedDataset, setHasCleanedDataset,
+        hasGeneratedDashboard, setHasGeneratedDashboard,
+        toast, showToast 
+    }}>
       {children}
     </AppContext.Provider>
   );

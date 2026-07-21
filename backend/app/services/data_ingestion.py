@@ -3,41 +3,49 @@ import io
 
 class DataIngestionService:
     @staticmethod
-    def parse_file(file_content: bytes, filename: str) -> pl.DataFrame:
+    def parse_file(file_content: bytes, filename: str) -> dict:
         custom_na_values = [
             '#N/A', '#N/A N/A', '#NA', '-1.#IND', '-1.#QNAN', '-NaN', '-nan',
             '1.#IND', '1.#QNAN', '<NA>', 'N/A', 'NA', 'NULL', 'NaN', 'n/a', 'nan', 'null'
         ]
 
-        # Use infer_schema_length=0 to parse everything as string first.
-        # This is critical to distinguish Missing Values ("NaN") from Empty Cells ("").
         if filename.endswith(".csv"):
             try:
-                return pl.read_csv(file_content, infer_schema_length=0, ignore_errors=True)
+                df = pl.read_csv(file_content, infer_schema_length=0, ignore_errors=True)
+                return {"Dataset": df}
             except Exception as e:
                 try:
-                    return pl.read_csv(file_content, encoding='utf8-lossy', infer_schema_length=0)
+                    df = pl.read_csv(file_content, encoding='utf8-lossy', infer_schema_length=0)
+                    return {"Dataset": df}
                 except Exception as ex:
                     raise ValueError(f"CSV Parsing Error: {str(ex)}")
         elif filename.endswith(".tsv"):
             try:
-                return pl.read_csv(file_content, separator="\t", infer_schema_length=0, ignore_errors=True)
+                df = pl.read_csv(file_content, separator="\t", infer_schema_length=0, ignore_errors=True)
+                return {"Dataset": df}
             except Exception as e:
                 try:
-                    return pl.read_csv(file_content, separator="\t", encoding='utf8-lossy', infer_schema_length=0)
+                    df = pl.read_csv(file_content, separator="\t", encoding='utf8-lossy', infer_schema_length=0)
+                    return {"Dataset": df}
                 except Exception as ex:
                     raise ValueError(f"TSV Parsing Error: {str(ex)}")
         elif filename.endswith(".xlsx") or filename.endswith(".xls"):
             try:
                 import pandas as pd
-                # Read all as string to preserve blank vs NaN
-                pdf = pd.read_excel(io.BytesIO(file_content), dtype=str, keep_default_na=False)
-                return pl.from_pandas(pdf)
+                # sheet_name=None reads all sheets into a dict of pandas DataFrames
+                dfs_dict = pd.read_excel(io.BytesIO(file_content), sheet_name=None, dtype=str, keep_default_na=False)
+                result = {}
+                for sheet_name, pdf in dfs_dict.items():
+                    result[sheet_name] = pl.from_pandas(pdf)
+                if not result:
+                    raise ValueError("No sheets found in Excel file")
+                return result
             except Exception as ex:
                 raise ValueError(f"Excel Parsing Error: {str(ex)}")
         elif filename.endswith(".json"):
             try:
-                return pl.read_json(io.BytesIO(file_content), infer_schema_length=0)
+                df = pl.read_json(io.BytesIO(file_content), infer_schema_length=0)
+                return {"Dataset": df}
             except Exception as e:
                 raise ValueError(f"JSON Parsing Error: {str(e)}")
         else:
